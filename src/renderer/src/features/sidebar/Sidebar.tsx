@@ -427,7 +427,7 @@ function RailAccount({
     >
       <AccountAvatar color={color} letter={badgeOf(a)} size={24} />
       {unread > 0 ? <span className="udot" /> : null}
-      {!a.inUnified ? (
+      {!a.inUnified && kind !== 'disabled' ? (
         <span className="mglyph" aria-hidden="true">
           <Icon name="bell-off" />
         </span>
@@ -728,7 +728,7 @@ function AccountBlock({
         </span>
         <AccountAvatar color={color} letter={badgeOf(a)} />
         <span className="nm">{a.displayName}</span>
-        {!a.inUnified ? (
+        {!a.inUnified && kind !== 'disabled' ? (
           <span className="muted-ic" title="Muted in All inboxes" role="img" aria-label="Muted in All inboxes">
             <Icon name="bell-off" />
           </span>

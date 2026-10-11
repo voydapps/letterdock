@@ -101,6 +101,15 @@ describe('Mute in All inboxes', () => {
     await act(async () => root.unmount());
   });
 
+  it('shows no success toast when the update fails', async () => {
+    const { useToasts } = await import('../../src/renderer/src/store/toasts');
+    const { toggleAccountMute } = await import('../../src/renderer/src/lib/accountMute');
+    (window as unknown as { api: { invoke: unknown } }).api.invoke = () => Promise.reject(new Error('boom'));
+    useToasts.setState({ items: [] });
+    await toggleAccountMute(account({ id: 'a9' }));
+    expect(useToasts.getState().items.some((t) => t.message.includes('muted in All inboxes'))).toBe(false);
+  });
+
   it('settings checkbox sends the inUnified patch', async () => {
     const { useApp } = await import('../../src/renderer/src/store/app');
     const { useUi } = await import('../../src/renderer/src/store/ui');

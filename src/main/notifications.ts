@@ -1,10 +1,13 @@
 // Windows notifications for new mail and sign-in problems (ARCHITECTURE section 8).
 // Pure logic: Electron's Notification and the window are injected, so it can be tested.
 import type { AppSettings, MessageHeader, MessageId } from '../shared/ipc';
+import { TEST_TOAST_CONTEXT } from './toast';
+import { capLine, mailLines } from './toastText';
 
 export interface ToastSpec {
   title: string;
-  body: string;
+  /** Lines under the title, each shown on its own row. */
+  lines: string[];
   silent: boolean;
   onClick: () => void;
   /**
@@ -81,7 +84,7 @@ export class Notifier {
     if (batch.length > (this.d.groupAbove ?? 3)) {
       this.d.show({
         title: `${batch.length} new messages`,
-        body: `in ${name}`,
+        lines: [`in ${name}`],
         silent,
         onClick: () => this.d.focusMain(),
       });
@@ -102,13 +105,13 @@ export class Notifier {
       this.d.show(
         prefs.showPreview
           ? {
-              title: sender,
-              body: [m.subject || '(no subject)', m.snippet].filter(Boolean).join('\n').slice(0, 200),
+              title: capLine(sender),
+              lines: mailLines(m.subject, m.snippet),
               silent,
               onClick: () => this.d.focusMain(m.id),
               ...extra,
             }
-          : { title: 'New mail', body: name, silent, onClick: () => this.d.focusMain(m.id), ...extra },
+          : { title: 'New mail', lines: [name], silent, onClick: () => this.d.focusMain(m.id), ...extra },
       );
     }
   }
@@ -128,7 +131,7 @@ export class Notifier {
       const sender = m.from?.name || m.from?.address || 'Unknown sender';
       this.d.show({
         title: 'Snoozed mail is back',
-        body: `${sender}\n${m.subject || '(no subject)'}`.slice(0, 200),
+        lines: [capLine(sender), capLine(m.subject || '(no subject)')],
         silent,
         onClick: () => this.d.focusMain(m.id),
       });
@@ -136,9 +139,30 @@ export class Notifier {
     }
     this.d.show({
       title: 'Snoozed mail is back',
-      body: messages.length === 1 ? 'A message is back in your Inbox' : `${messages.length} messages are back in your Inbox`,
+      lines: [messages.length === 1 ? 'A message is back in your Inbox' : `${messages.length} messages are back in your Inbox`],
       silent,
       onClick: () => this.d.focusMain(messages.length === 1 ? m.id : undefined),
+    });
+  }
+
+  /**
+   * "Show a test notification" (Settings > Notifications). A made-up single-message toast with all
+   * three buttons, so the user can see how buttons and icons look. It ignores "Show notifications"
+   * and the focus check (the button is pressed inside the app), but follows the sound setting.
+   * Its context belongs to no real message: pressing anything on it does nothing.
+   */
+  showTest(): void {
+    this.d.show({
+      title: 'Letterdock',
+      lines: ['This is a test notification', 'Your buttons and icons look like this.'],
+      silent: !this.d.settings().notifications.sound,
+      onClick: () => undefined,
+      context: TEST_TOAST_CONTEXT,
+      buttons: [
+        { action: 'read', label: 'Mark as read' },
+        { action: 'archive', label: 'Archive' },
+        { action: 'delete', label: 'Delete' },
+      ],
     });
   }
 
@@ -152,7 +176,7 @@ export class Notifier {
     const name = await this.d.accountName(accountId).catch(() => 'An account');
     this.d.show({
       title: `${name} needs you to sign in again`,
-      body: 'Open Letterdock to fix it.',
+      lines: ['Open Letterdock to fix it.'],
       silent: !this.d.settings().notifications.sound,
       onClick: () => this.d.focusMain(),
     });

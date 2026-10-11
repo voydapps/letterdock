@@ -67,6 +67,8 @@ export interface HandlerDeps {
   showUndoInMain: (e: { label: string; undoToken: string; count: number }) => boolean;
   /** Brings the main window to the front and shows Settings on this page. */
   openSettingsInMain: (section: 'mail', anchor?: 'quick-replies') => boolean;
+  /** Shows the sample notification (Settings > Notifications > "Show a test notification"). */
+  showTestNotification: () => void;
 }
 
 export function createMainHandlers(d: HandlerDeps): MainHandlers {
@@ -269,6 +271,7 @@ export function createMainHandlers(d: HandlerDeps): MainHandlers {
       return { attachments };
     },
 
+    'notifications.test': () => d.showTestNotification(),
     'settings.get': () => d.settings.get(),
     'settings.set': async (patch) => {
       const next = d.settings.set(patch);

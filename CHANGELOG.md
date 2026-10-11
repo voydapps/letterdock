@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.8 - 2026-10-11
+### New
+- The buttons on new-mail notifications (Mark as read, Archive, Delete) now have small icons.
+- A "Show a test notification" button in Settings, Notifications. It shows a sample notification so you can see how the buttons and icons look. Its buttons do nothing to your mail.
+### Fixed
+- A notification no longer repeats the subject in the preview line, and long subjects are no longer cut in the middle of a word.
+
 ## 0.6.7 - 2026-10-11
 ### Fixed
 - Mark as unread now stays on the message you are reading. Before, it was marked read again after a moment.

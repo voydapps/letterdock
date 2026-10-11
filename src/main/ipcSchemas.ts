@@ -372,6 +372,7 @@ export const schemas: Schemas = {
     .object({ folderId: id.optional(), scope: scope.optional() })
     .refine((r) => r.folderId !== undefined || r.scope !== undefined),
 
+  'notifications.test': none,
   'settings.get': none,
   'settings.set': settingsPatch,
   'images.cacheInfo': none,

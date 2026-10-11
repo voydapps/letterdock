@@ -1493,6 +1493,8 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       setTimeout(() => changed({ updated: ids, folderIds: [] }), 30);
       return delay({ ok: true, archivedCount, changed: ids }, 80);
     }
+    case 'notifications.test':
+      return delay(undefined, 30);
     case 'ui.openSettings':
       emitToOtherWindows({ type: 'ui:openSettings', section: 'mail', anchor: (r as { anchor?: 'quick-replies' }).anchor });
       return delay({ delivered: true }, 30);

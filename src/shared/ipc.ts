@@ -1381,6 +1381,8 @@ export interface IpcMethods {
   'sync.loadOlder': { req: LoadOlderReq; res: LoadOlderRes };
 
   // settings / app
+  /** Shows a sample notification with all three buttons (Settings > Notifications). Buttons do nothing. Works even when notifications are off. */
+  'notifications.test': { req: void; res: void };
   'settings.get': { req: void; res: AppSettings };
   'settings.set': { req: Partial<AppSettings>; res: AppSettings };
   'images.cacheInfo': { req: void; res: { bytes: number; files: number } };

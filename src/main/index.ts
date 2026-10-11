@@ -46,6 +46,7 @@ import { ImageService } from './imageCache/service';
 import { createLogger, type Logger } from './logger';
 import { Notifier } from './notifications';
 import { buildToastXml } from './toast';
+import { resolveToastIcons, toastIconsDir } from './toastIcons';
 import { onToastActivation } from './toastActions';
 import { MicrosoftOAuth } from './oauth/microsoft';
 import { OAuthService } from './oauth/service';
@@ -220,7 +221,7 @@ async function boot(): Promise<void> {
     show: (t) => {
       if (!Notification.isSupported()) return;
       const plain = () => {
-        const n = new Notification({ title: t.title, body: t.body, silent: t.silent, icon: appIconPath() });
+        const n = new Notification({ title: t.title, body: t.lines.join('\n'), silent: t.silent, icon: appIconPath() });
         n.on('click', t.onClick);
         n.show();
       };
@@ -232,10 +233,15 @@ async function boot(): Promise<void> {
           const n = new Notification({
             toastXml: buildToastXml({
               title: t.title,
-              body: t.body,
+              lines: t.lines,
               silent: t.silent,
               context: t.context,
               buttons: t.buttons,
+              buttonIcons: resolveToastIcons({
+                dir: toastIconsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+                dark: nativeTheme.shouldUseDarkColors,
+                exists: existsSync,
+              }),
             }),
           });
           n.on('failed', plain);
@@ -425,6 +431,7 @@ async function boot(): Promise<void> {
       send({ type: 'ui:openSettings', section, ...(anchor ? { anchor } : {}) });
       return true;
     },
+    showTestNotification: () => notifier.showTest(),
   });
 
   registerIpc({

@@ -61,8 +61,7 @@ describe('Notifier', () => {
     await fire();
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toMatchObject({ title: 'Sender 1', silent: false });
-    expect(toasts[0]!.body).toContain('Subject 1');
-    expect(toasts[0]!.body).toContain('snippet 1');
+    expect(toasts[0]!.lines).toEqual(['Subject 1', 'snippet 1']);
     toasts[0]!.onClick();
     expect(focus).toHaveBeenCalledWith(1);
   });
@@ -73,7 +72,7 @@ describe('Notifier', () => {
     n.newMail('a1', [msg(3), msg(4), msg(5)]);
     await fire();
     expect(toasts).toHaveLength(1);
-    expect(toasts[0]).toMatchObject({ title: '5 new messages', body: 'in Work' });
+    expect(toasts[0]).toMatchObject({ title: '5 new messages', lines: ['in Work'] });
     toasts[0]!.onClick();
     expect(focus).toHaveBeenCalledWith(); // no single message to open
   });
@@ -108,7 +107,7 @@ describe('Notifier', () => {
     const hidden = setup({ showPreview: false, sound: false });
     hidden.n.newMail('a1', [msg(1)]);
     await hidden.fire();
-    expect(hidden.toasts[0]).toMatchObject({ title: 'New mail', body: 'Work', silent: true });
+    expect(hidden.toasts[0]).toMatchObject({ title: 'New mail', lines: ['Work'], silent: true });
   });
 
   it('shows nothing while the window is focused', async () => {

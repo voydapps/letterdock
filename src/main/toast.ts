@@ -8,11 +8,23 @@
 // The buttons use activationType="background": pressing one runs the work without bringing any
 // window to the front.
 
+import type { ToastIcons } from './toastIcons';
+
 export type ToastAction = 'open' | 'read' | 'archive' | 'delete';
 
 export interface ToastContext {
   accountId: string;
   messageId: number;
+}
+
+/**
+ * Context of the test notification (Settings > Notifications > "Show a test notification"). It
+ * belongs to no real account or message: pressing anything on that toast does nothing.
+ */
+export const TEST_TOAST_CONTEXT: ToastContext = { accountId: '__letterdock_test__', messageId: 0 };
+
+export function isTestToastContext(c: ToastContext): boolean {
+  return c.accountId === TEST_TOAST_CONTEXT.accountId;
 }
 
 export interface ToastButton {
@@ -22,12 +34,22 @@ export interface ToastButton {
 
 export interface ToastXmlSpec {
   title: string;
-  body: string;
+  /** Text lines under the title (each its own <text>, shown in order). */
+  lines: string[];
   silent: boolean;
   context: ToastContext;
   buttons: ToastButton[];
   /** Absolute path of the app icon (shown small at the left). Optional. */
   iconPath?: string;
+  /** Absolute paths of the button icons (already chosen for the theme). A missing one = text only. */
+  buttonIcons?: ToastIcons;
+}
+
+/** `file:///C:/Users/Ann Lee/x.png`: forward slashes, spaces and other odd characters encoded. */
+export function fileUri(absPath: string): string {
+  const p = absPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  // encodeURI leaves # and ? alone; in a file URI they would cut the path.
+  return 'file:///' + encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
 }
 
 const XML_ESCAPES: Record<string, string> = {
@@ -77,20 +99,22 @@ export function parseActivationArgs(raw: string | undefined | null): ParsedActiv
 export function buildToastXml(spec: ToastXmlSpec): string {
   const launch = escapeXml(encodeActivationArgs('open', spec.context));
   const text = (s: string) => (s ? `<text>${escapeXml(s)}</text>` : '');
+  const lines = spec.lines.map(text).join('');
   const image = spec.iconPath
     ? `<image placement="appLogoOverride" src="${escapeXml(`file:///${spec.iconPath.replace(/\\/g, '/')}`)}"/>`
     : '';
   const buttons = spec.buttons
-    .map(
-      (b) =>
-        `<action content="${escapeXml(b.label)}" arguments="${escapeXml(
+    .map((b) => {
+      const icon = spec.buttonIcons?.[b.action];
+      const imageUri = icon ? ` imageUri="${escapeXml(fileUri(icon))}"` : '';
+      return `<action content="${escapeXml(b.label)}"${imageUri} arguments="${escapeXml(
           encodeActivationArgs(b.action, spec.context),
-        )}" activationType="background"/>`,
-    )
+        )}" activationType="background"/>`;
+    })
     .join('');
   return (
     `<toast launch="${launch}" activationType="foreground">` +
-    `<visual><binding template="ToastGeneric">${image}${text(spec.title)}${text(spec.body)}</binding></visual>` +
+    `<visual><binding template="ToastGeneric">${image}${text(spec.title)}${lines}</binding></visual>` +
     (spec.silent ? '<audio silent="true"/>' : '') +
     (buttons ? `<actions>${buttons}</actions>` : '') +
     '</toast>'

@@ -23,6 +23,7 @@ export const MAIN_CHANNELS = [
   'messages.saveEml',
   'ui.showUndo',
   'ui.openSettings',
+  'notifications.test',
   'unsubscribe.run',
   'settings.get',
   'settings.set',

@@ -1,7 +1,7 @@
 // What happens when the user presses something on a notification (DESIGN-SPEC 3.13.3).
 // Pure logic with injected parts, so it can be tested without Electron.
 import type { AppEvent } from '../shared/ipc';
-import { parseActivationArgs } from './toast';
+import { isTestToastContext, parseActivationArgs } from './toast';
 
 export interface ToastActionDeps {
   /** Engine request (internal channel `notifications.action`). */
@@ -26,6 +26,8 @@ export async function onToastActivation(
 ): Promise<void> {
   const a = parseActivationArgs(details.arguments);
   if (!a) return;
+  // The test notification (Settings > Notifications) is not a real message: nothing happens.
+  if (isTestToastContext(a)) return;
   if (a.action === 'open') {
     d.openMessage(a.messageId);
     return;

@@ -38,6 +38,8 @@ electronLanguages:
 extraResources:
   - from: build/icon.ico
   - from: build/icon.png
+  - from: build/toast-icons
+    to: toast-icons
 # mailto: links. NSIS ignores this key; the Windows registry entries that make Letterdock show up in
 # Settings > Default apps are written by build/installer.nsh. Kept for other platforms and as a record.
 protocols:

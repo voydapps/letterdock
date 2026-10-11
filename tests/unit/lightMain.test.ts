@@ -33,7 +33,7 @@ describe('toast XML', () => {
   it('builds buttons with background activation and escapes everything', () => {
     const xml = buildToastXml({
       title: 'Alice <a@x.com> & "co"',
-      body: "It's 5 < 6",
+      lines: ["It's 5 < 6"],
       silent: true,
       context: ctx,
       buttons: [
@@ -59,16 +59,16 @@ describe('toast XML', () => {
   });
 
   it('leaves out the audio element for sound and the actions element without buttons', () => {
-    const xml = buildToastXml({ title: 'T', body: '', silent: false, context: ctx, buttons: [] });
+    const xml = buildToastXml({ title: 'T', lines: [], silent: false, context: ctx, buttons: [] });
     expect(xml).not.toContain('<audio');
     expect(xml).not.toContain('<actions>');
     expect(xml).toContain('<text>T</text>');
-    expect(xml.match(/<text>/g)).toHaveLength(1); // empty body = no empty line
+    expect(xml.match(/<text>/g)).toHaveLength(1); // no lines = no empty line
   });
 
   it('two buttons without Archive: Mark as read and Delete', () => {
     const xml = buildToastXml({
-      title: 'T', body: 'B', silent: false, context: ctx,
+      title: 'T', lines: ['B'], silent: false, context: ctx,
       buttons: [{ action: 'read', label: 'Mark as read' }, { action: 'delete', label: 'Delete' }],
     });
     expect([...xml.matchAll(/<action content="([^"]+)"/g)].map((m) => m[1])).toEqual(['Mark as read', 'Delete']);
@@ -230,7 +230,7 @@ describe('Notifier: buttons and snooze return', () => {
     const a = setup({ notifications: { ...DEFAULT_SETTINGS.notifications, showPreview: false } });
     a.n.newMail('a1', [msg(1)], true);
     await a.fire();
-    expect(a.toasts[0]).toMatchObject({ title: 'New mail', body: 'Work' });
+    expect(a.toasts[0]).toMatchObject({ title: 'New mail', lines: ['Work'] });
     expect(a.toasts[0]!.buttons?.map((b) => b.action)).toEqual(['read', 'archive']);
   });
 
@@ -238,15 +238,14 @@ describe('Notifier: buttons and snooze return', () => {
     const a = setup();
     a.n.snoozeReturned('a1', [msg(1), msg(2), msg(3)]);
     expect(a.toasts).toHaveLength(1);
-    expect(a.toasts[0]).toMatchObject({ title: 'Snoozed mail is back', body: '3 messages are back in your Inbox' });
+    expect(a.toasts[0]).toMatchObject({ title: 'Snoozed mail is back', lines: ['3 messages are back in your Inbox'] });
     expect(a.toasts[0]!.buttons).toBeUndefined();
     a.n.snoozeReturned('a1', [msg(4)]);
-    expect(a.toasts[1]!.body).toContain('Sender 4');
-    expect(a.toasts[1]!.body).toContain('Subject 4');
+    expect(a.toasts[1]!.lines).toEqual(['Sender 4', 'Subject 4']);
 
     const priv = setup({ notifications: { ...DEFAULT_SETTINGS.notifications, showPreview: false } });
     priv.n.snoozeReturned('a1', [msg(4)]);
-    expect(priv.toasts[0]!.body).toBe('A message is back in your Inbox');
+    expect(priv.toasts[0]!.lines).toEqual(['A message is back in your Inbox']);
 
     const off = setup({ notifySnoozeReturn: false });
     off.n.snoozeReturned('a1', [msg(1)]);

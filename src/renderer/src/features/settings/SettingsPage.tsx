@@ -1078,6 +1078,21 @@ function Notifications() {
           onChange={(v) => void set({ notifySnoozeReturn: v })}
         />
       </div>
+      <Checkbox
+        checked={settings.badgeTaskbar}
+        label="Show the unread count on the taskbar icon"
+        onChange={(v) => void set({ badgeTaskbar: v })}
+      />
+      <p className="hint rad-hint">
+        A red number on the Letterdock button. Windows can hide it: Settings &gt; Personalization &gt; Taskbar &gt;
+        Taskbar behaviors &gt; Show badges on taskbar apps.
+      </p>
+      <Checkbox
+        checked={settings.badgeTray}
+        label="Show a dot on the tray icon when there is unread mail"
+        onChange={(v) => void set({ badgeTray: v })}
+      />
+      <p className="hint rad-hint">A small red dot on the Letterdock icon in the notification area.</p>
       {accounts.length > 0 ? (
         <>
           <h2 id="h-notify-acc">NOTIFY FOR THESE ACCOUNTS</h2>

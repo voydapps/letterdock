@@ -89,7 +89,7 @@
     </div>
     <p class="small">Free and open source (MIT) · Windows 10 and 11, 64-bit · about 100 MB</p>
     <p class="small">Not sure it is safe? <a href="#install">See how to install</a>. If the download does not start, <a href="https://github.com/voydapps/letterdock/releases/latest">open the download page</a>.</p>
-    <p class="whatsnew"><span class="chip">New in 0.6.0</span> Snooze, one-click unsubscribe, quick replies and a command box. <a href="changelog.html">See what changed</a></p>
+    <p class="whatsnew"><span class="chip">New in 0.6.4</span> Open .eml files, a Delete button on notifications, snooze and one-click unsubscribe. <a href="changelog.html">See what changed</a></p>
     <div class="hero-shot">
       <a class="zoom" href="screenshots/full/hero-light.png" aria-label="Enlarge screenshot: Unified inbox"><picture>
         <source data-t="dark" data-m="(max-width: 600px)" media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="screenshots/hero-mobile-dark.webp" type="image/webp">
@@ -255,11 +255,11 @@
       <details class="tile" name="feat">
         <summary>
           <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg></span>
-          <span class="t"><strong>Notifications and tray</strong><span>Windows notifications with Mark as read and Archive buttons.</span></span>
+          <span class="t"><strong>Notifications and tray</strong><span>Windows notifications with Mark as read, Archive and Delete buttons.</span></span>
           <span class="plus" aria-hidden="true"></span>
         </summary>
         <div class="more">
-          <p>Get a Windows notification for new mail. Mark it as read or archive it right from the notification. Close the window and Letterdock keeps checking from the tray.</p>
+          <p>Get a Windows notification for new mail. Mark it as read, archive it or delete it right from the notification. Delete moves the message to Trash. It is hidden when you turn off &ldquo;Show the sender and subject&rdquo;. Close the window and Letterdock keeps checking from the tray.</p>
           <a class="zoom" href="screenshots/full/notifications.png" aria-label="Enlarge screenshot: Notifications and tray"><picture><source srcset="screenshots/notifications.webp" type="image/webp"><img class="shot" src="screenshots/notifications.png" width="1000" height="700" loading="lazy" decoding="async" alt="Settings for new mail notifications, and the option to keep running in the background when the window is closed."></picture></a>
         </div>
       </details>
@@ -274,6 +274,18 @@
       <div class="tile plain">
         <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></span>
         <span class="t"><strong>Automatic updates</strong><span>Tells you when a new version is ready. One click to install.</span></span>
+      </div>
+      <div class="tile plain">
+        <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13l3 2 3-2"/></svg></span>
+        <span class="t"><strong>.eml files</strong><span>Open and save mail as .eml files. Double-click, drag or press Ctrl+O.</span></span>
+      </div>
+      <div class="tile plain">
+        <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8"/></svg></span>
+        <span class="t"><strong>Keyboard shortcuts</strong><span>Outlook keys, or Gmail-style keys such as J, K and R. Pick one in Settings.</span></span>
+      </div>
+      <div class="tile plain">
+        <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 6h18v12H3zM3 7l9 6 9-6"/></svg></span>
+        <span class="t"><strong>Default mail app</strong><span>Choose Letterdock to open mailto: links.</span></span>
       </div>
     </div>
   </div>
@@ -402,6 +414,7 @@
       <details><summary>Does it work on Mac, Linux or phones?</summary><div class="ans"><p>Not right now. Letterdock is for Windows 10 and 11 (64-bit) only.</p></div></details>
       <details><summary>Is it safe? Why does Windows warn me?</summary><div class="ans"><p>The installer is not signed with a paid certificate yet, so Windows is careful. The code is public and anyone can check it. See <a href="#install">How to install</a>.</p></div></details>
       <details><summary>Where is my mail stored?</summary><div class="ans"><p>On your PC only. Your mail also stays on your provider&rsquo;s server, as always. Removing an account in Letterdock does not delete mail on the server.</p></div></details>
+      <details><summary>Can Letterdock open .eml files? And .msg?</summary><div class="ans"><p>Yes for .eml. Double-click a saved message, use Open with, drag it onto Letterdock, or press Ctrl+O. Letterdock shows up in Windows Default apps for .eml, but it never makes itself the default. .msg files (from Outlook) are not supported.</p></div></details>
       <details><summary>Does Letterdock block email trackers?</summary><div class="ans"><p>Pictures are blocked until you allow them. When you allow them, Letterdock still keeps known tracking pictures blocked and tells you when a message had some. It cannot find every tracker, so keep pictures off for senders you do not know.</p></div></details>
       <details><summary>Why does Gmail need an app password?</summary><div class="ans"><p>Google does not allow normal passwords in desktop apps. An app password is a separate 16-letter code just for Letterdock. You can delete it any time in your Google account.</p></div></details>
       <details><summary>Can I use my Outlook or Hotmail account?</summary><div class="ans"><p>&lsquo;Sign in with Microsoft&rsquo; is coming. We will announce it on <a href="https://github.com/voydapps/letterdock/releases">GitHub releases</a>.</p></div></details>

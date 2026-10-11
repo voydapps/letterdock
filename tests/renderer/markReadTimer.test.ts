@@ -37,13 +37,14 @@ const header = (id: number, seen: boolean): MessageHeader =>
 const server = new Map<number, boolean>();
 const applied: { id: number; read: boolean }[] = [];
 let convSeen: Record<number, boolean> = {};
+let bodyDelay = 0;
 
 function installApi() {
   (window as unknown as { api: unknown }).api = {
     invoke: (channel: string, req: Record<string, unknown>) => {
       if (channel === 'messages.get') {
         const id = req.messageId as number;
-        return Promise.resolve({
+        return new Promise((resolve) => setTimeout(resolve, bodyDelay)).then(() => ({
           id,
           header: header(id, server.get(id) ?? false),
           bcc: [],
@@ -56,7 +57,7 @@ function installApi() {
           hasRemoteImages: false,
           senderImagesAllowed: false,
           truncated: false,
-        });
+        }));
       }
       if (channel === 'messages.apply') {
         const action = req.action as { type: string; read?: boolean };
@@ -116,6 +117,7 @@ beforeEach(() => {
   server.clear();
   applied.length = 0;
   convSeen = {};
+  bodyDelay = 0;
   installApi();
 });
 afterEach(() => {
@@ -179,6 +181,23 @@ describe('single message: auto mark as read vs Mark as unread', () => {
     await act(async () => root.unmount());
   });
 
+  it('Mark as unread while the body is still loading is not undone when the body arrives', async () => {
+    await setup(1500);
+    bodyDelay = 500;
+    const { useList } = await import('../../src/renderer/src/store/list');
+    const { ReadingPane } = await import('../../src/renderer/src/features/reading/ReadingPane');
+    server.set(1, true);
+    useList.setState({ items: [header(1, true)] as never, selectedIds: [1] });
+    const { root } = await mount(createElement(ReadingPane));
+    await tick(100);
+    await act(async () => useList.getState().patch([1], { seen: false })); // Ctrl+U before the body is here
+    await tick(500); // the body arrives
+    await tick(5000);
+    expect(applied).toEqual([]);
+    expect(useList.getState().items[0]!.seen).toBe(false);
+    await act(async () => root.unmount());
+  });
+
   it('"Immediately" reads at once and lets Mark as unread stay; "Never" does not read', async () => {
     await setup(0);
     const { useList } = await import('../../src/renderer/src/store/list');
@@ -188,6 +207,7 @@ describe('single message: auto mark as read vs Mark as unread', () => {
     server.set(1, false);
     useList.setState({ items: [header(1, false)] as never, selectedIds: [1] });
     const { root } = await mount(createElement(ReadingPane));
+    await tick(100);
     await tick(100);
     expect(applied).toEqual([{ id: 1, read: true }]);
     await act(async () => {

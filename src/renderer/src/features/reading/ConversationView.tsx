@@ -575,6 +575,7 @@ function Card({
         if (ok) {
           setSeenLocal(true);
           noteThreadRead(threadId);
+          handle.cancel();
         }
       });
     };

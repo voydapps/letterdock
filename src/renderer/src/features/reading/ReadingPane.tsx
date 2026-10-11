@@ -224,8 +224,11 @@ export function MessageView({
   const seen = header.seen;
   const ready = state.status === 'ready';
   const seenRef = useRef(seen);
+  // The flag went from read to unread while this message was open: the user did it, so do not read it again by timer.
+  const markedUnreadRef = useRef(false);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    if (seenRef.current && !seen) markedUnreadRef.current = true;
     seenRef.current = seen;
     // The user (or another window) changed the flag while the timer was waiting: drop the timer.
     if (autoTimer.current !== null) {
@@ -234,7 +237,7 @@ export function MessageView({
     }
   }, [seen]);
   useEffect(() => {
-    if (!ready || markDelay < 0 || seenRef.current) return;
+    if (!ready || markDelay < 0 || seenRef.current || markedUnreadRef.current) return;
     const h = setTimeout(() => {
       autoTimer.current = null;
       void applyToMessages([header.id], { type: 'markRead', read: true });

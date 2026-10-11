@@ -102,7 +102,7 @@ for (const [w,h,scheme] of [[1440,900,'light'],[1440,900,'dark'],[1024,800,'ligh
 for (const [w,scheme] of [[600,'light'],[1000,'light'],[1440,'light'],[1440,'dark'],[375,'light']]) {
   const ctx = await b.newContext({viewport:{width:w,height:900},colorScheme:scheme});
   const pg = await ctx.newPage(); await pg.goto(base);
-  const rows = await pg.evaluate(()=>{const m={};document.querySelectorAll('.tiles > .tile').forEach(t=>{const r=t.getBoundingClientRect();const k=Math.round(r.top+scrollY-(t.matches('details.tile')?0:0));(m[k]=m[k]||[]).push(r.height)});return Object.values(m)});
+  const rows = await pg.evaluate(()=>{const m={};document.querySelectorAll('.tiles > .tile').forEach(t=>{const r=t.getBoundingClientRect();const k=Math.round(r.top+scrollY);(m[k]=m[k]||[]).push(r.height)});return Object.values(m)});
   console.log('rows', w, scheme, JSON.stringify(rows));
   ok(rows.length>0 && rows.every(r=>r.every(h=>Math.abs(h-r[0])<0.5)), `${w} ${scheme}: all tiles in a row have equal height`);
   if (w>=600) ok(rows.some(r=>r.length>1), `${w} ${scheme}: rows have several tiles`);

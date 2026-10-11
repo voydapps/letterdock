@@ -113,6 +113,17 @@ export class EmlOpener {
     return null;
   }
 
+  /**
+   * The engine restarted: it forgot every message, so the tokens are dead. Drop them, so opening a
+   * file again makes a fresh window with a fresh token instead of focusing the dead one. The dead
+   * windows stay until the user closes them (they show "no longer available"); closing one does
+   * nothing here. The engine is not told to close: the new engine never saw these tokens.
+   */
+  forgetAll(): void {
+    this.byKey.clear();
+    this.byToken.clear();
+  }
+
   /** The window closed: the file can be opened again and the engine forgets the message. */
   private release(token: string): void {
     const e = this.byToken.get(token);

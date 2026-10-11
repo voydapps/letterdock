@@ -49,6 +49,8 @@ function setup(files: Record<string, { size?: number; head?: Buffer }> = {}) {
 
 const paths = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`C:\\m\\${i + 1}.eml`, {}]));
 
+const PATH1 = 'C:\\m\\1.eml';
+
 describe('EmlOpener', () => {
   it('opens a file: a token is given to the engine and to the window, never the path in the token', async () => {
     const t = setup(paths(1));
@@ -188,5 +190,27 @@ describe('EmlOpener', () => {
     const t = setup();
     const res = await t.opener.openPaths([42, null, {}]);
     expect(res.errors.map((e) => e.code)).toEqual(['unreadable', 'unreadable', 'unreadable']);
+  });
+
+  it('after an engine restart the same file opens again in a fresh window (the old token is dead)', async () => {
+    const t = setup(paths(1));
+    await t.opener.openPaths([PATH1]);
+    const oldToken = t.opened[0]!.token;
+    t.opener.forgetAll();
+    expect(t.opener.openCount).toBe(0);
+    expect(t.opener.pathOf(oldToken)).toBeNull();
+    const res = await t.opener.openPaths([PATH1]);
+    expect(res).toMatchObject({ opened: 1, errors: [] });
+    expect(t.opened).toHaveLength(2);
+    expect(t.opened[1]!.token).not.toBe(oldToken);
+    expect(t.windows.get(oldToken)!.focus).not.toHaveBeenCalled();
+    expect(t.opener.openCount).toBe(1);
+    // Closing the dead window later does not touch the new one and does not call the engine.
+    t.windows.get(oldToken)!.close();
+    expect(t.opener.openCount).toBe(1);
+    expect(t.closedTokens).toEqual([]);
+    // The new window is still found by a third open.
+    await t.opener.openPaths([PATH1]);
+    expect(t.opened).toHaveLength(2);
   });
 });

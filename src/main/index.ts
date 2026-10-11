@@ -172,6 +172,7 @@ async function boot(): Promise<void> {
   // ---- notifications ----
   const accountNames = new Map<string, string>();
   let engineRef: EngineHost | null = null;
+  let emlRef: EmlOpener | null = null;
   const accountName = async (accountId: string): Promise<string> => {
     let n = accountNames.get(accountId);
     if (n === undefined && engineRef) {
@@ -257,6 +258,7 @@ async function boot(): Promise<void> {
     else if (e.type === 'account:authRequired') void notifier.authRequired(e.accountId);
     else if (e.type === 'accounts:changed') accountNames.clear();
     else if (e.type === 'counts:changed') tray.setUnread(e.unifiedInboxUnread);
+    else if (e.type === 'engine:restarted') emlRef?.forgetAll();
   };
 
   // ---- Sign in with Microsoft ----
@@ -349,6 +351,7 @@ async function boot(): Promise<void> {
     },
     log,
   });
+  emlRef = eml;
   const printTemp = join(app.getPath('temp'), 'letterdock-print');
   void cleanPrintTemp(printTemp);
 

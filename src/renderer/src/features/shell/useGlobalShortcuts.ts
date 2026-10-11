@@ -3,7 +3,7 @@ import { CONV_MOVE_EVENT, LIST_MOVE_EVENT, isPlainKey, isTypingTarget, matchShor
 import { useApp, accountInbox, activePreset } from '../../store/app';
 import { useList } from '../../store/list';
 import { useUi } from '../../store/ui';
-import { applyToMessages, composeFrom, deleteMessages, deleteMessagesPermanently, newMessage, openCompose, openInWindow, roleOf } from '../../lib/actions';
+import { applyToMessages, composeFrom, deleteMessages, deleteMessagesPermanently, newMessage, openCompose, pickEmlFiles, openInWindow, roleOf } from '../../lib/actions';
 import { allMuted, allPinned, canMute, canSnoozeRole, openSnoozeMenu, setMuted, setPinned, snoozeAnchor } from '../../lib/light';
 import { canPinHere } from '../../lib/pinRules';
 import { undoLast } from '../../store/undo';
@@ -109,6 +109,8 @@ export function useGlobalShortcuts(): void {
           return run(() => ui.set({ searchFocusTick: ui.searchFocusTick + 1 }));
         case 'commandBox':
           return run(() => ui.set({ commandBoxOpen: true }));
+        case 'openEml':
+          return run(pickEmlFiles);
         case 'settings':
           return run(() => ui.openSettings());
         case 'toggleSidebar':

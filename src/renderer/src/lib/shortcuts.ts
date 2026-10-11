@@ -13,6 +13,7 @@ export type ShortcutId =
   | 'addAccount'
   | 'search'
   | 'commandBox'
+  | 'openEml'
   | 'settings'
   | 'toggleSidebar'
   | 'nextPane'
@@ -114,6 +115,13 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Command box (type a command or a folder)',
     keys: 'Ctrl+K',
     match: [k('k', { ctrl: true })],
+  },
+  {
+    id: 'openEml',
+    group: 'Global',
+    label: 'Open an .eml file',
+    keys: 'Ctrl+O',
+    match: [k('o', { ctrl: true })],
   },
   { id: 'settings', group: 'Global', label: 'Settings', keys: 'Ctrl+,', match: [k(',', { ctrl: true })] },
   {
@@ -446,6 +454,7 @@ const WORKS_WHILE_TYPING: ShortcutId[] = [
   'addAccount',
   'search',
   'commandBox',
+  'openEml',
   'settings',
   'toggleSidebar',
   'nextPane',

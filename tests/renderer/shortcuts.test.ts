@@ -221,3 +221,18 @@ describe('the typing guard', () => {
     expect(isPlainKey(key('Escape'))).toBe(false);
   });
 });
+
+describe('Ctrl+O opens an .eml file (DESIGN-SPEC 3.14.2)', () => {
+  it('is a global shortcut in both styles, and it works while typing in a field', () => {
+    for (const preset of ['outlook', 'gmail'] as const) {
+      const sc = matchShortcut(key('o', { ctrlKey: true }), preset);
+      expect(sc?.id).toBe('openEml');
+      expect(sc?.group).toBe('Global');
+      expect(worksWhileTyping(sc!, key('o', { ctrlKey: true }))).toBe(true);
+    }
+  });
+  it('the plain O of the Gmail style still opens a message', () => {
+    expect(idOf(key('o'), 'gmail')).toBe('open');
+    expect(idOf(key('o'), 'outlook')).toBeNull();
+  });
+});

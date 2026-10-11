@@ -15,6 +15,7 @@ import {
   deleteMessagesPermanently,
   newMessage,
   openInWindow,
+  pickEmlFiles,
   roleOf,
 } from '../../lib/actions';
 import {
@@ -262,6 +263,7 @@ export function buildCommands(): Command[] {
   for (const [id, name] of SETTINGS_PAGES) {
     out.push({ id: `settings:${id}`, label: `Open Settings > ${name}`, icon: 'gear', run: () => useUi.getState().openSettings(id, null) });
   }
+  out.push({ id: 'openEml', label: 'Open .eml file...', icon: 'file', hint: 'Ctrl+O', run: pickEmlFiles });
   out.push({ id: 'addAccount', label: 'Add account', icon: 'plus', hint: 'Ctrl+Shift+A', run: () => useUi.getState().set({ addAccount: {} }) });
   out.push({ id: 'cheatsheet', label: 'Show keyboard shortcuts', icon: 'key', hint: 'Ctrl+/', run: () => useUi.getState().set({ cheatsheetOpen: true }) });
   if (app.accounts.length > 0) out.push(...goCommands(), ...folderCommands());

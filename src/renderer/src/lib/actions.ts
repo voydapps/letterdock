@@ -1,4 +1,5 @@
 import type {
+  EmlOpenRes,
   AccountId,
   ApplyActionRes,
   ComposeMode,
@@ -481,6 +482,24 @@ export function composeFromEml(token: string, mode: Exclude<ComposeMode, 'new'>)
   call('eml.compose', { token, mode })
     .then((r) => call('compose.openWindow', { mode, draftId: r.draftId }))
     .catch((e) => toastError(asAppError(e).message));
+}
+
+/** Shows what opening .eml files gave back: one toast per problem, and the "first 5 of 8" notice (DESIGN-SPEC 3.14.4). */
+export function reportEmlResult(res: EmlOpenRes): void {
+  for (const e of res.errors) toastError(e.message);
+  if (res.notice) toast(res.notice);
+}
+
+/** Ctrl+O and the "Open .eml file..." command: the Windows file picker, then the chosen files open (3.14.2). */
+export function pickEmlFiles(): void {
+  call('eml.pickFiles').then(reportEmlResult, (e) => toastError(asAppError(e).message));
+}
+
+/** Files dropped on the main window (3.14.2). Main checks every path again. */
+export function openDroppedFiles(files: File[]): void {
+  const paths = files.map((f) => window.api.pathForFile(f));
+  if (paths.length === 0) return;
+  call('eml.openPaths', { paths }).then(reportEmlResult, (e) => toastError(asAppError(e).message));
 }
 
 /** Open a draft from the Drafts folder in the compose window. */

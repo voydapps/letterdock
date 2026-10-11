@@ -35,6 +35,8 @@ interface Open {
 export class EmlOpener {
   private byKey = new Map<string, Open>();
   private byToken = new Map<string, { key: string; open: Open }>();
+  /** Tokens of windows that are still open but whose message the restarted engine no longer has. They count toward the cap. */
+  private dead = new Set<string>();
   /** Batches run one after the other, so two quick launches cannot open the same file twice. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -46,7 +48,7 @@ export class EmlOpener {
   }
 
   get openCount(): number {
-    return this.byToken.size;
+    return this.byToken.size + this.dead.size;
   }
 
   /** Opens the first 5 of `paths`. Never throws: problems are in `errors`. */
@@ -81,7 +83,7 @@ export class EmlOpener {
       existing.win.focus();
       return null;
     }
-    if (this.byToken.size >= EML_MAX_OPEN) return this.error('tooManyOpen', file.fileName);
+    if (this.openCount >= EML_MAX_OPEN) return this.error('tooManyOpen', file.fileName);
     const read = await readEmlBytes(file, fs);
     if (!read.ok) return this.error(read.code, read.fileName);
 
@@ -116,16 +118,19 @@ export class EmlOpener {
   /**
    * The engine restarted: it forgot every message, so the tokens are dead. Drop them, so opening a
    * file again makes a fresh window with a fresh token instead of focusing the dead one. The dead
-   * windows stay until the user closes them (they show "no longer available"); closing one does
-   * nothing here. The engine is not told to close: the new engine never saw these tokens.
+   * windows stay until the user closes them (they show "no longer available"), so they still count
+   * toward the open-window cap until they close. The engine is not told to close them: the new
+   * engine never saw these tokens.
    */
   forgetAll(): void {
+    for (const token of this.byToken.keys()) this.dead.add(token);
     this.byKey.clear();
     this.byToken.clear();
   }
 
   /** The window closed: the file can be opened again and the engine forgets the message. */
   private release(token: string): void {
+    if (this.dead.delete(token)) return; // the new engine never had this token
     const e = this.byToken.get(token);
     if (!e) return;
     this.byToken.delete(token);

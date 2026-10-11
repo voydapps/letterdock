@@ -522,7 +522,7 @@ async function boot(): Promise<void> {
     const res = await eml.openPaths(paths);
     const toastable = !startup && mainVisible();
     if (res.errors.length > 0 && !toastable) {
-      viewers.openEmlError(res.errors[0]!.code);
+      viewers.openEmlError(res.errors.map((e) => ({ code: e.code, fileName: e.fileName })));
       return;
     }
     for (const e of res.errors) {

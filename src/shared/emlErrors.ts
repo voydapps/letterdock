@@ -41,3 +41,33 @@ export const MSG_MAGIC = [0xd0, 0xcf, 0x11, 0xe0] as const;
 export function hasMsgMagic(bytes: ArrayLike<number>): boolean {
   return bytes.length >= 4 && MSG_MAGIC.every((b, i) => bytes[i] === b);
 }
+
+/** One file that did not open, as shown in the error window (the name is only the file name, not the path). */
+export interface EmlErrorItem {
+  code: EmlErrorCode;
+  fileName: string;
+}
+
+/** The error window lists at most this many files; one action opens 5 at most, so none is left out. */
+export const EML_ERROR_WINDOW_MAX = 5;
+
+/**
+ * URL hash of the small error window: `emlerror=<code>&emlfile=<name>` once per file, in order.
+ * A single error without a name (`emlerror=<code>`) is read too.
+ */
+export function emlErrorHashOf(items: readonly EmlErrorItem[]): string {
+  const p = new URLSearchParams();
+  for (const it of items.slice(0, EML_ERROR_WINDOW_MAX)) {
+    p.append('emlerror', it.code);
+    p.append('emlfile', it.fileName.slice(0, 260));
+  }
+  return p.toString();
+}
+
+/** Reads `emlErrorHashOf`. Unknown codes become `unreadable`; no entry at all gives an empty list. */
+export function readEmlErrorHash(hash: string): { code: EmlErrorCode; fileName: string }[] {
+  const p = new URLSearchParams(hash.replace(/^#/, ''));
+  const codes = p.getAll('emlerror').slice(0, EML_ERROR_WINDOW_MAX);
+  const names = p.getAll('emlfile');
+  return codes.map((c, i) => ({ code: isEmlErrorCode(c) ? c : 'unreadable', fileName: names[i] ?? '' }));
+}

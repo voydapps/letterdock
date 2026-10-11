@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import type { AppError, EmlMessage } from '../../../../shared/ipc';
-import { EML_ERROR_TEXT, isEmlErrorCode } from '../../../../shared/emlErrors';
+import { EML_ERROR_TEXT, type EmlErrorItem } from '../../../../shared/emlErrors';
 import { Banner, Button, MenuHost, ToastHost, useMenu } from '../../components/ui';
 import { ContactPopoverHost } from '../../components/ContactPopover';
 import { MessageView } from '../reading/ReadingPane';
@@ -230,9 +230,10 @@ export function EmlViewerApp({ token }: { token: string | null }) {
 }
 
 /** The small error window: the app was started by a file that could not be opened (3.14.4). Icon, text, Close. */
-export function EmlErrorApp({ code }: { code: string | null }) {
+export function EmlErrorApp({ items }: { items: EmlErrorItem[] }) {
   useThemeEffect();
-  const text = isEmlErrorCode(code) ? EML_ERROR_TEXT[code] : EML_ERROR_TEXT.unreadable;
+  // One file: its reason. Several files (the app was started with more than one bad file): every file with its reason.
+  const list = items.length > 0 ? items : [{ code: 'unreadable' as const, fileName: '' }];
   useEffect(() => {
     document.title = 'Letterdock';
     document.documentElement.dataset.window = 'message';
@@ -253,7 +254,21 @@ export function EmlErrorApp({ code }: { code: string | null }) {
           <span className="eml-err-ic">
             <Icon name="warn" size={24} />
           </span>
-          <p>{text}</p>
+          {list.length === 1 ? (
+            <p>{EML_ERROR_TEXT[list[0]!.code]}</p>
+          ) : (
+            <>
+              <p>{`${list.length} files could not be opened.`}</p>
+              <ul className="eml-err-list" aria-label="Files that could not be opened">
+                {list.map((it, i) => (
+                  <li key={i}>
+                    <b>{it.fileName || 'File'}</b>
+                    <span>{EML_ERROR_TEXT[it.code]}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <Button variant="primary" onClick={() => window.close()}>
             Close
           </Button>

@@ -231,6 +231,9 @@ describe('Ctrl+O opens an .eml file (DESIGN-SPEC 3.14.2)', () => {
       expect(worksWhileTyping(sc!, key('o', { ctrlKey: true }))).toBe(true);
     }
   });
+  it('the shortcut list says "Open .eml file", the command box "Open .eml file..." (commands that ask for a choice end in dots)', () => {
+    expect(SHORTCUTS.find((s) => s.id === 'openEml')?.label).toBe('Open .eml file');
+  });
   it('the plain O of the Gmail style still opens a message', () => {
     expect(idOf(key('o'), 'gmail')).toBe('open');
     expect(idOf(key('o'), 'outlook')).toBeNull();

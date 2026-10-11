@@ -1,4 +1,5 @@
 // Pure helpers of the message window (no Electron), so tests can import them.
+import { emlErrorHashOf, type EmlErrorItem } from '../shared/emlErrors';
 
 export interface ViewerSize {
   width: number;
@@ -20,9 +21,9 @@ export function emlHash(token: string): string {
   return `eml=${encodeURIComponent(token)}`;
 }
 
-/** Hash value of the small error window (app started by a file that could not be opened): `#emlerror=<code>`. */
-export function emlErrorHash(code: string): string {
-  return `emlerror=${encodeURIComponent(code)}`;
+/** Hash of the small error window (app started by files that could not be opened): `#emlerror=<code>&emlfile=<name>`, once per file. */
+export function emlErrorHash(items: readonly EmlErrorItem[]): string {
+  return emlErrorHashOf(items);
 }
 
 /** Reads a saved size; anything odd falls back to the default. */

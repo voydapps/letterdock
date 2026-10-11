@@ -3,6 +3,7 @@
 // Size, position and maximized state are remembered between runs (see windowBounds.ts).
 import { join } from 'node:path';
 import { BrowserWindow, nativeTheme, shell } from 'electron';
+import type { EmlErrorItem } from '../shared/emlErrors';
 import { isSafeExternalUrl } from '../shared/safety';
 import { appIconPath } from './appIcon';
 import { emlErrorHash, emlHash, viewerHash } from './viewerState';
@@ -61,11 +62,11 @@ export class ViewerWindows {
   }
 
   /** Small window with an error text, for an app that was started by a file it could not open. */
-  openEmlError(code: string): BrowserWindow {
+  openEmlError(items: readonly EmlErrorItem[]): BrowserWindow {
     const dark = nativeTheme.shouldUseDarkColors;
     const win = new BrowserWindow({
       width: 520,
-      height: 300,
+      height: items.length > 1 ? Math.min(560, 280 + 56 * items.length) : 300,
       minWidth: 400,
       minHeight: 240,
       show: false,
@@ -78,7 +79,7 @@ export class ViewerWindows {
     });
     win.once('ready-to-show', () => win.show());
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    this.load(win, emlErrorHash(code));
+    this.load(win, emlErrorHash(items));
     this.opts.onCreated(win);
     return win;
   }

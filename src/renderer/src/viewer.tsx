@@ -3,6 +3,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ViewerApp } from './features/viewer/ViewerApp';
+import { readEmlErrorHash, type EmlErrorItem } from '../../shared/emlErrors';
 import { EmlErrorApp, EmlViewerApp } from './features/viewer/EmlViewerApp';
 import './styles/app.css';
 import './styles/mail-actions.css';
@@ -21,9 +22,9 @@ export function readViewerEmlToken(hash: string = location.hash): string | null 
   return raw !== null && /^[A-Za-z0-9-]{8,80}$/.test(raw) ? raw : null;
 }
 
-/** The error code of the small error window (`#emlerror=<code>`), or null when this is not that window. */
-export function readViewerEmlError(hash: string = location.hash): string | null {
-  return new URLSearchParams(hash.replace(/^#/, '')).get('emlerror');
+/** The files listed by the small error window (`#emlerror=<code>&emlfile=<name>`, once per file). */
+export function readViewerEmlErrors(hash: string = location.hash): EmlErrorItem[] {
+  return readEmlErrorHash(hash);
 }
 
 async function start(): Promise<void> {
@@ -34,7 +35,7 @@ async function start(): Promise<void> {
   }
   const params = new URLSearchParams(location.hash.replace(/^#/, ''));
   const app = params.has('emlerror') ? (
-    <EmlErrorApp code={readViewerEmlError()} />
+    <EmlErrorApp items={readViewerEmlErrors()} />
   ) : params.has('eml') ? (
     <EmlViewerApp token={readViewerEmlToken()} />
   ) : (

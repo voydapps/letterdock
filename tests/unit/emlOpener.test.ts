@@ -186,6 +186,31 @@ describe('EmlOpener', () => {
     expect(res.errors[0]).toMatchObject({ code: 'tooManyOpen' });
   });
 
+  it('the 15-window cap still counts windows that went dead in an engine restart, until they close', async () => {
+    const t = setup(paths(20));
+    for (let i = 1; i <= 15; i += 5) {
+      await t.opener.openPaths(Array.from({ length: 5 }, (_, k) => `C:\\m\\${i + k}.eml`));
+    }
+    const oldTokens = t.opened.map((o) => o.token);
+    t.opener.forgetAll();
+    expect(t.opener.openCount).toBe(15);
+    // 15 dead windows are still on screen: no new window yet.
+    const full = await t.opener.openPaths(['C:\\m\\16.eml']);
+    expect(full.errors[0]).toMatchObject({ code: 'tooManyOpen' });
+    // The same file can open again once a dead window closes (the count is by window, not by file).
+    t.windows.get(oldTokens[0]!)!.close();
+    expect(t.opener.openCount).toBe(14);
+    expect(t.closedTokens).toEqual([]);
+    const again = await t.opener.openPaths(['C:\\m\\1.eml']);
+    expect(again).toMatchObject({ opened: 1, errors: [] });
+    expect(t.opener.openCount).toBe(15);
+    expect((await t.opener.openPaths(['C:\\m\\17.eml'])).errors[0]).toMatchObject({ code: 'tooManyOpen' });
+    // Closing a live window frees the engine as usual.
+    t.windows.get(t.opened[t.opened.length - 1]!.token)!.close();
+    expect(t.closedTokens).toHaveLength(1);
+    expect(t.opener.openCount).toBe(14);
+  });
+
   it('non-string input is "could not read" and never throws', async () => {
     const t = setup();
     const res = await t.opener.openPaths([42, null, {}]);
@@ -197,14 +222,14 @@ describe('EmlOpener', () => {
     await t.opener.openPaths([PATH1]);
     const oldToken = t.opened[0]!.token;
     t.opener.forgetAll();
-    expect(t.opener.openCount).toBe(0);
     expect(t.opener.pathOf(oldToken)).toBeNull();
     const res = await t.opener.openPaths([PATH1]);
     expect(res).toMatchObject({ opened: 1, errors: [] });
     expect(t.opened).toHaveLength(2);
     expect(t.opened[1]!.token).not.toBe(oldToken);
     expect(t.windows.get(oldToken)!.focus).not.toHaveBeenCalled();
-    expect(t.opener.openCount).toBe(1);
+    // The dead window is still on screen, so it still counts until it closes.
+    expect(t.opener.openCount).toBe(2);
     // Closing the dead window later does not touch the new one and does not call the engine.
     t.windows.get(oldToken)!.close();
     expect(t.opener.openCount).toBe(1);

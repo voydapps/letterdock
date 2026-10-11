@@ -119,7 +119,7 @@ export const SHORTCUTS: Shortcut[] = [
   {
     id: 'openEml',
     group: 'Global',
-    label: 'Open an .eml file',
+    label: 'Open .eml file',
     keys: 'Ctrl+O',
     match: [k('o', { ctrl: true })],
   },

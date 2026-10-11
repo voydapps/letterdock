@@ -1060,6 +1060,12 @@ function Notifications() {
   const accounts = useApp((s) => s.accounts);
   const colorOf = useAccountColor();
   const set = useSetting();
+  const [testBusy, setTestBusy] = useState(false);
+  useEffect(() => {
+    if (!testBusy) return;
+    const t = window.setTimeout(() => setTestBusy(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [testBusy]);
   if (!settings) return null;
   const n = settings.notifications;
   const toggleAccount = (id: string, notify: boolean) => {
@@ -1102,6 +1108,20 @@ function Notifications() {
         onChange={(v) => void set({ badgeTray: v })}
       />
       <p className="hint rad-hint">A small red dot on the Letterdock icon in the notification area.</p>
+      <div style={{ marginTop: 12 }}>
+        <Button
+          disabled={testBusy}
+          onClick={() => {
+            setTestBusy(true);
+            call('notifications.test')
+              .then(() => toast('Test notification sent.'))
+              .catch((e) => toastError(asAppError(e).message));
+          }}
+        >
+          Show a test notification
+        </Button>
+        <p className="hint rad-hint">See how notifications look. The buttons on the test do nothing.</p>
+      </div>
       {accounts.length > 0 ? (
         <>
           <h2 id="h-notify-acc">NOTIFY FOR THESE ACCOUNTS</h2>

@@ -31,6 +31,9 @@ export default function QuickRepliesSettings() {
       h.focus({ preventScroll: true });
     }
     useUi.getState().set({ settingsAnchor: null });
+    // The blocks above (storage, image cache) may load and grow after this: scroll once more when they settle.
+    // (No cleanup: clearing the anchor above re-runs this effect. The ref is null after unmount, so this is safe.)
+    setTimeout(() => heading.current?.scrollIntoView({ block: 'start' }), 300);
   }, [anchored, ready]);
   if (!settings) return null;
   const list = settings.quickReplies;

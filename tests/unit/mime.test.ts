@@ -8,6 +8,7 @@ import {
   htmlToPlain,
   initialHtml,
   parseMailto,
+  quotableText,
   quoteHtml,
   replyRecipients,
   replyReferences,
@@ -193,5 +194,49 @@ describe('buildRaw', () => {
 
     const withBcc = await simpleParser(withBccHeader(raw, [{ address: 'hidden@example.com' }]));
     expect(JSON.stringify(withBcc.headers.get('bcc'))).toContain('hidden@example.com');
+  });
+});
+
+describe('quoting HTML mail as text', () => {
+  it('drops pictures: no address, no alt text, tracking pixels included', () => {
+    const html =
+      '<p>Hi</p><img src="https://example.com/pixel.gif" width="1" height="1">' +
+      '<img src="https://t.mandrillapp.com/track/open.php?u=1"><img src="https://x.test/logo.png" alt="Company logo">' +
+      '<a href="https://x.test/a"><img src="https://x.test/b.png"></a>';
+    const t = htmlToPlain(html);
+    expect(t).toContain('Hi');
+    expect(t).not.toMatch(/pixel\.gif|mandrillapp|logo\.png|b\.png|Company logo/);
+  });
+
+  it('keeps the capitals of headings and table headers', () => {
+    expect(htmlToPlain('<h2>Hello from a file</h2><h1>Big News</h1><table><tr><th>Name</th></tr></table>')).toContain(
+      'Hello from a file',
+    );
+    expect(htmlToPlain('<h1>Big News</h1>')).toContain('Big News');
+    expect(htmlToPlain('<table><tr><th>Name</th></tr></table>')).toContain('Name');
+  });
+
+  it('quotes from the HTML, not from the parser text that lists picture addresses', () => {
+    const q = quotableText({
+      html: '<h2>Hello from a file</h2><img src="https://example.com/pixel.gif" width="1" height="1">',
+      text: 'HELLO FROM A FILE\n\n[https://example.com/pixel.gif]',
+    });
+    expect(q).toBe('Hello from a file');
+    expect(quotableText({ html: null, text: 'Plain' })).toBe('Plain');
+    expect(quotableText({ html: '<img src="https://e.x/p.gif">', text: 'Fallback' })).toBe('Fallback');
+  });
+
+  it('a file-mode style parse of an HTML-only mail gives a clean quote', async () => {
+    const raw = [
+      'From: a@x.test',
+      'To: b@x.test',
+      'Subject: t',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      '<h2>Hello from a file</h2><img src="https://example.com/pixel.gif" width="1" height="1">',
+    ].join('\r\n');
+    const p = await simpleParser(raw, { skipImageLinks: true });
+    const q = quotableText({ html: typeof p.html === 'string' ? p.html : null, text: p.text ?? null });
+    expect(q).toBe('Hello from a file');
   });
 });

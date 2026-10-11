@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.6.3 - 2026-10-11
+## 0.6.4 - 2026-10-11
 ### New
 - Open .eml files: double-click a saved message, use Open with, or drag it onto Letterdock. Letterdock now appears in Windows Default apps for .eml; it never makes itself the default.
+### Fixed
+- No more white frame around a message when its window opens.
+- Replies and forwards no longer quote the web addresses of hidden pictures. Headings also keep their capital letters.
 
 ## 0.6.2 - 2026-10-11
 ### New

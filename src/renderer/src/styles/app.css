@@ -1369,6 +1369,21 @@ mark {
   border-radius: 8px;
   color-scheme: light;
 }
+/* The message frame is focused by code when a window opens (so the arrow keys scroll it). That
+   must not draw a frame: no outline for code or mouse focus. Keyboard focus (Tab) keeps the app
+   ring, drawn inside the frame because a shadow outside would be cut off by the card. */
+.mbody iframe:focus,
+.mbody iframe:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.mbody[data-autofocus]:focus-visible {
+  box-shadow: none;
+}
+.mbody iframe:focus-visible:not([data-autofocus]) {
+  outline: 2px solid var(--ring-o);
+  outline-offset: -2px;
+}
 /* Dark theme: Simple mail and the dark transform sit on the pane itself (DESIGN-SPEC 3.6.1). */
 .mbody iframe.themed {
   background: transparent;

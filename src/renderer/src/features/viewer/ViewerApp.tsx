@@ -166,6 +166,9 @@ export function ViewerApp({ messageId }: { messageId: number | null }) {
       tries++;
       if (el) {
         el.setAttribute('tabindex', '0');
+        // Focus by code is not keyboard focus: no ring until the user tabs back in (see .mbody iframe in app.css).
+        el.setAttribute('data-autofocus', '');
+        el.addEventListener('blur', () => el.removeAttribute('data-autofocus'), { once: true });
         el.focus();
       }
       if (el || tries > 30) clearInterval(h);

@@ -28,8 +28,12 @@ export function htmlToPlain(html: string): string {
   return convert(html, {
     wordwrap: false,
     selectors: [
-      { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },
+      { selector: 'a', options: { hideLinkHrefIfSameAsText: true, ignoreHref: false } },
+      // Pictures never reach the text: not their address (a hidden tracking pixel would show as
+      // "[https://...]") and not their alt text. Headings keep the sender's capitals.
       { selector: 'img', format: 'skip' },
+      ...(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const).map((selector) => ({ selector, options: { uppercase: false } })),
+      { selector: 'table', options: { uppercaseHeaderCells: false } },
       { selector: 'style', format: 'skip' },
       { selector: 'script', format: 'skip' },
     ],
@@ -38,9 +42,14 @@ export function htmlToPlain(html: string): string {
 
 const MAX_QUOTE_CHARS = 200_000;
 
-/** Text of a message for quoting: the text part, else the HTML converted to text. Capped. */
+/**
+ * Text of a message for quoting. The HTML is converted by us when there is any, because the parser
+ * makes its own text from the HTML when a mail has no text part, and that text lists picture
+ * addresses and uppercases headings. Else the text part. Capped.
+ */
 export function quotableText(body: Pick<MessageBody, 'text' | 'html'>): string {
-  const t = body.text?.trim() ? body.text : body.html ? htmlToPlain(body.html) : '';
+  const fromHtml = body.html?.trim() ? htmlToPlain(body.html).trim() : '';
+  const t = fromHtml || (body.text?.trim() ? body.text : '');
   return t.length > MAX_QUOTE_CHARS ? `${t.slice(0, MAX_QUOTE_CHARS)}\n[...]` : t;
 }
 

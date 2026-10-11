@@ -47,6 +47,7 @@ import { createLogger, type Logger } from './logger';
 import { Notifier } from './notifications';
 import { buildToastXml } from './toast';
 import { resolveToastIcons, toastIconsDir } from './toastIcons';
+import { WindowsMode, toastIsDark } from './windowsTheme';
 import { onToastActivation } from './toastActions';
 import { MicrosoftOAuth } from './oauth/microsoft';
 import { OAuthService } from './oauth/service';
@@ -208,6 +209,12 @@ async function boot(): Promise<void> {
     w.focus();
     if (messageId !== undefined) send({ type: 'ui:openMessage', messageId });
   };
+  // Toast icons follow the Windows mode, not Letterdock's Theme setting.
+  const windowsMode = new WindowsMode();
+  if (process.platform === 'win32') {
+    void windowsMode.refresh();
+    nativeTheme.on('updated', () => void windowsMode.refresh());
+  }
   const notifier = new Notifier({
     settings: () => settings.get(),
     isMainFocused: () =>
@@ -239,7 +246,7 @@ async function boot(): Promise<void> {
               buttons: t.buttons,
               buttonIcons: resolveToastIcons({
                 dir: toastIconsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
-                dark: nativeTheme.shouldUseDarkColors,
+                dark: toastIsDark(windowsMode.isDark, nativeTheme.shouldUseDarkColors),
                 exists: existsSync,
               }),
             }),

@@ -10,6 +10,7 @@ import { buildToastXml, encodeActivationArgs, fileUri, TEST_TOAST_CONTEXT } from
 import { onToastActivation } from '../../src/main/toastActions';
 import { resolveToastIcons, toastIconsDir } from '../../src/main/toastIcons';
 import { capLine, mailLines, previewLine } from '../../src/main/toastText';
+import { WindowsMode, parseSystemUsesLightTheme, toastIsDark } from '../../src/main/windowsTheme';
 import type { MessageHeader } from '../../src/shared/ipc';
 
 const repo = resolve(__dirname, '..', '..');
@@ -219,5 +220,38 @@ describe('test notification', () => {
   it('the IPC channel is a main channel without arguments', () => {
     expect(MAIN_CHANNELS).toContain('notifications.test');
     expect(schemas['notifications.test']).toBeDefined();
+  });
+});
+
+describe('toast icon theme follows the Windows mode', () => {
+  const reg = (v: number) =>
+    `\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\r\n` +
+    `    SystemUsesLightTheme    REG_DWORD    0x${v}\r\n`;
+  const iconsFor = (dark: boolean) => resolveToastIcons({ dir: devDir, dark, exists: existsSync });
+
+  it('reads the value from reg query output', () => {
+    expect(parseSystemUsesLightTheme(reg(1))).toBe(false); // light Windows
+    expect(parseSystemUsesLightTheme(reg(0))).toBe(true); // dark Windows
+    expect(parseSystemUsesLightTheme('nonsense')).toBeNull();
+  });
+  it('app dark + Windows light: dark-glyph (light) icons', async () => {
+    const w = new WindowsMode(async () => reg(1));
+    await w.refresh();
+    expect(iconsFor(toastIsDark(w.isDark, true)).read).toBe(join(devDir, 'read-light.png'));
+  });
+  it('app light + Windows dark: white (dark) icons', async () => {
+    const w = new WindowsMode(async () => reg(0));
+    await w.refresh();
+    expect(iconsFor(toastIsDark(w.isDark, false)).read).toBe(join(devDir, 'read-dark.png'));
+  });
+  it('a failed or unreadable read falls back to the app theme', async () => {
+    const w = new WindowsMode(async () => {
+      throw new Error('no reg');
+    });
+    await w.refresh();
+    expect(w.isDark).toBeNull();
+    expect(toastIsDark(w.isDark, true)).toBe(true);
+    expect(toastIsDark(w.isDark, false)).toBe(false);
+    expect(toastIsDark(null, true)).toBe(true); // not read yet
   });
 });

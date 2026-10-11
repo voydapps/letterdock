@@ -1,4 +1,4 @@
-// Headless check of the website screenshot viewer:  node scripts/test-site-viewer.mjs <out-dir>  (writes viewer-<width>.png)
+// Headless check of the website screenshot viewer:  node scripts/test-site-viewer.mjs [out-dir]  (writes pictures only when out-dir is given)
 // 13 pictures: the hero and the 12 feature tiles. The tile pictures sit in closed <details> and load only when opened.
 import { chromium } from 'playwright';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -35,7 +35,7 @@ for (const [w,h,scheme] of [[1440,900,'light'],[375,812,'dark'],[320,640,'light'
   const g = await pg.evaluate(()=>{const i=document.querySelector('.v-fig img').getBoundingClientRect();const c=document.querySelector('.v-close').getBoundingClientRect();const im=document.querySelector('.v-fig img');return {iw:i.width,ih:i.height,nw:im.naturalWidth,right:innerWidth-c.right,cw:c.width,ch:c.height,fits:i.bottom<=innerHeight&&i.right<=innerWidth,sw:document.documentElement.scrollWidth<=innerWidth}});
   console.log(JSON.stringify(g));
   ok(g.iw<=g.nw+1 && g.fits && g.cw>=44 && g.ch>=44, `${w}: image fits, not upscaled, close 44px`);
-  await pg.waitForTimeout(400); await pg.screenshot({path:`${out}/viewer-${w}.png`});
+  await pg.waitForTimeout(400); if (out) await pg.screenshot({path:`${out}/viewer-${w}.png`});
   await pg.keyboard.press('ArrowRight'); ok((await pg.textContent('.v-count'))==='6 / 13', `${w}: right arrow`);
   await pg.keyboard.press('ArrowLeft'); await pg.keyboard.press('ArrowLeft'); ok((await pg.textContent('.v-count'))==='4 / 13', `${w}: left arrow`);
   await pg.click('.v-next'); ok((await pg.textContent('.v-count'))==='5 / 13', `${w}: next button`);

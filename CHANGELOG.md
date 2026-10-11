@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 - 2026-10-11
+### New
+- Open .eml files: double-click a saved message, use Open with, or drag it onto Letterdock. Letterdock now appears in Windows Default apps for .eml; it never makes itself the default.
+
 ## 0.6.2 - 2026-10-11
 ### New
 - Delete button on the Windows notification for one new message. It moves the message to Trash. It is hidden when notifications show New mail only.

@@ -559,7 +559,7 @@ h3 {
   display: grid;
   gap: 12px;
   grid-template-columns: 1fr;
-  align-items: start;
+  align-items: stretch;
 }
 @media (min-width: 600px) {
   .tiles {
@@ -720,6 +720,11 @@ details.tile[open]::after {
   }
   details.tile[open]:hover {
     transform: none;
+  }
+  /* tiles in one row share a height; the summary fills it (panel is absolute here, so it never grows the summary) */
+  details.tile summary {
+    box-sizing: border-box;
+    height: 100%;
   }
   .tile[open] .more {
     position: absolute;

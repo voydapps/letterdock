@@ -3,6 +3,7 @@
 // mailbox message (MessageView), in "file mode": everything asks by token.
 // Also the small error window (`#emlerror=<code>`) for an app that was started by a file it could not open.
 import { useEffect, useMemo, useState } from 'react';
+import { Icon } from '../../components/Icon';
 import type { AppError, EmlMessage } from '../../../../shared/ipc';
 import { EML_ERROR_TEXT, isEmlErrorCode } from '../../../../shared/emlErrors';
 import { Banner, Button, MenuHost, ToastHost, useMenu } from '../../components/ui';
@@ -22,6 +23,45 @@ import appIcon from '../../../../../build/icon-small.svg';
 type Load = { status: 'loading' } | { status: 'error'; error: AppError } | { status: 'ready'; message: EmlMessage };
 
 const BAD_LINK: AppError = { code: 'INVALID_INPUT', message: EML_ERROR_TEXT.unreadable, retryable: false };
+
+/** True once `ms` have passed. The loading skeleton waits 300 ms, so a quick open never flashes it (3.14.6). */
+function useAfter(ms: number, active: boolean): boolean {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    const h = setTimeout(() => setLate(true), ms);
+    return () => clearTimeout(h);
+  }, [ms, active]);
+  return active && late;
+}
+
+/** A file name with the end kept visible: the start shrinks with "..." and the last characters (with the extension) stay. */
+export function MiddleEllipsis({ text, tail = 10 }: { text: string; tail?: number }) {
+  const cut = text.length > tail * 2 ? text.length - tail : 0;
+  return (
+    <span className="mid">
+      <span className="mid-head">{cut ? text.slice(0, cut) : text}</span>
+      {cut ? <span className="mid-tail">{text.slice(cut)}</span> : null}
+    </span>
+  );
+}
+
+/** Placeholder shapes of a message while it loads: header lines and some body lines. */
+function LoadingSkeleton() {
+  return (
+    <div className="vskel" aria-hidden="true" data-eml-skeleton>
+      <div className="skel" style={{ height: 22, width: '55%' }} />
+      <div className="skel" style={{ height: 14, width: '35%' }} />
+      <div className="skel" style={{ height: 14, width: '45%' }} />
+      <div className="mbody-skel">
+        <div className="skel" style={{ height: 12, width: '92%' }} />
+        <div className="skel" style={{ height: 12, width: '86%' }} />
+        <div className="skel" style={{ height: 12, width: '90%' }} />
+        <div className="skel" style={{ height: 12, width: '60%' }} />
+      </div>
+    </div>
+  );
+}
 
 export function EmlViewerApp({ token }: { token: string | null }) {
   useThemeEffect();
@@ -71,6 +111,7 @@ export function EmlViewerApp({ token }: { token: string | null }) {
     [token],
   );
 
+  const showSkeleton = useAfter(300, load.status === 'loading');
   const message = load.status === 'ready' ? load.message : null;
   const subject = message ? message.header.subject || '(no subject)' : null;
   useEffect(() => {
@@ -135,8 +176,8 @@ export function EmlViewerApp({ token }: { token: string | null }) {
   let content;
   if (load.status === 'loading') {
     content = (
-      <div className="vload" aria-busy="true" aria-label="Loading message">
-        <i className="spin big" />
+      <div className="vload vloading" aria-busy="true" aria-label="Loading message">
+        {showSkeleton ? <LoadingSkeleton /> : null}
       </div>
     );
   } else if (load.status === 'error') {
@@ -150,9 +191,11 @@ export function EmlViewerApp({ token }: { token: string | null }) {
   } else {
     content = (
       <FileModeContext.Provider value={fileMode}>
-        <div className="rbanner" role="status" data-eml-banner>
-          <div style={{ flex: 1 }} title={load.message.filePath}>
-            Opened from a file: {load.message.fileName}
+        <div className="rbanner eml-banner" role="status" data-eml-banner>
+          <Icon name="info" size={16} className="ic" />
+          <div className="eml-name" title={load.message.filePath}>
+            <span className="eml-lead">Opened from a file:&nbsp;</span>
+            <MiddleEllipsis text={load.message.fileName} />
           </div>
           <button
             type="button"
@@ -183,7 +226,7 @@ export function EmlViewerApp({ token }: { token: string | null }) {
   );
 }
 
-/** The small error window: the app was started by a file that could not be opened (3.14.4). */
+/** The small error window: the app was started by a file that could not be opened (3.14.4). Icon, text, Close. */
 export function EmlErrorApp({ code }: { code: string | null }) {
   useThemeEffect();
   const text = isEmlErrorCode(code) ? EML_ERROR_TEXT[code] : EML_ERROR_TEXT.unreadable;
@@ -203,10 +246,14 @@ export function EmlErrorApp({ code }: { code: string | null }) {
         <b>Letterdock</b>
       </header>
       <main className="reading" aria-label="Message file error">
-        <div className="vload">
-          <Banner tone="danger" actions={<Button size="sm" variant="primary" onClick={() => window.close()}>Close</Button>}>
-            {text}
-          </Banner>
+        <div className="vload eml-err" role="alert" data-eml-error>
+          <span className="eml-err-ic">
+            <Icon name="warn" size={24} />
+          </span>
+          <p>{text}</p>
+          <Button variant="primary" onClick={() => window.close()}>
+            Close
+          </Button>
         </div>
       </main>
     </div>

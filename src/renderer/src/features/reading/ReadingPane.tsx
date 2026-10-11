@@ -603,7 +603,7 @@ function FileToolbar({ file, onSource, onPrint }: { file: FileMode; onSource: ()
     ]);
   return (
     <div className="rtool" role="toolbar" aria-label="Message actions" style={{ overflow: 'hidden' }}>
-      <button type="button" className="tbtn" title={tip ?? 'Reply (Ctrl+R)'} disabled={!hasAccount} onClick={go('reply')}>
+      <button type="button" className="tbtn" aria-label="Reply" title={tip ?? 'Reply (Ctrl+R)'} disabled={!hasAccount} onClick={go('reply')}>
         <Icon name="reply" size={20} />
         <span className="lbl">Reply</span>
       </button>
@@ -611,7 +611,7 @@ function FileToolbar({ file, onSource, onPrint }: { file: FileMode; onSource: ()
         <Icon name="replyall" size={20} />
         <span className="lbl">Reply all</span>
       </button>
-      <button type="button" className="tbtn" title={tip ?? 'Forward (Ctrl+F)'} disabled={!hasAccount} onClick={go('forward')}>
+      <button type="button" className="tbtn" aria-label="Forward" title={tip ?? 'Forward (Ctrl+F)'} disabled={!hasAccount} onClick={go('forward')}>
         <Icon name="fwd" size={20} />
         <span className="lbl">Forward</span>
       </button>

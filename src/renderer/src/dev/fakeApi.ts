@@ -676,6 +676,7 @@ function runSend(id: number): void {
 // ---------- .eml files (DESIGN-SPEC 3.14) ----------
 // Tokens of the fake file messages: demo-plain, demo-html (remote image and a tracker pixel, a cid image),
 // demo-attach (attachments, one risky), demo-empty, demo-nosender. demo-gone is a token the engine has forgotten.
+// Hook: window.__fakeEmlDelay = ms makes eml.get slow (to see the loading skeleton, which shows after 300 ms).
 // Hook: window.__fakeEmlResult = { opened, total, notice, errors } decides what the picker and a drop answer.
 // File names decide the scenario of eml.openPaths: .msg, big, junk, bad, html, attach.
 const EML_TEXT: Record<string, string> = {
@@ -1835,7 +1836,7 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       return delay(fakeEmlOpen((r as { paths: string[] }).paths), 100);
     case 'eml.get': {
       const m = fakeEmlMessage((r as { token: string }).token);
-      return m ? delay(m, 150) : err('NOT_FOUND', 'This message is no longer available. Open the file again.');
+      return m ? delay(m, (window as unknown as { __fakeEmlDelay?: number }).__fakeEmlDelay ?? 150) : err('NOT_FOUND', 'This message is no longer available. Open the file again.');
     }
     case 'eml.cidData':
       return delay((r as { contentId: string }).contentId === 'logo' ? { contentType: 'image/png', data: EML_PIXEL_PNG } : null, 30);

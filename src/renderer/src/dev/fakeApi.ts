@@ -3,6 +3,8 @@
 // It mimics the M2/M3 backend behaviour: moved messages keep their id and arrive in
 // `messages:changed.updated`, sends always queue, undo tokens, search, OAuth waiting, outbox.
 import type {
+  EmlMessage,
+  EmlOpenRes,
   Account,
   AccountStatus,
   ConversationRow,
@@ -27,6 +29,7 @@ import type {
   UnsubscribeMethod,
 } from '../../../shared/ipc';
 import { emlFileName } from '../../../shared/fileName';
+import type { EmlErrorCode } from '../../../shared/emlErrors';
 import { buildDemo } from './demoData';
 
 const now = Date.now();
@@ -667,6 +670,107 @@ function runSend(id: number): void {
         : { type: 'send:result', outboxId: id, ok: true },
     );
   }, 1200);
+}
+
+
+// ---------- .eml files (DESIGN-SPEC 3.14) ----------
+// Tokens of the fake file messages: demo-plain, demo-html (remote image and a tracker pixel, a cid image),
+// demo-attach (attachments, one risky), demo-empty, demo-nosender. demo-gone is a token the engine has forgotten.
+// Hook: window.__fakeEmlResult = { opened, total, notice, errors } decides what the picker and a drop answer.
+// File names decide the scenario of eml.openPaths: .msg, big, junk, bad, html, attach.
+const EML_TEXT: Record<string, string> = {
+  unreadable: 'Letterdock could not read this file.',
+  notEmail: 'This file does not look like an email message.',
+  tooLarge: 'This file is too large to open (limit 50 MB).',
+  msgUnsupported:
+    'Outlook .msg files are not supported. In Outlook, use Save As and choose the .eml format, or forward the message as an attachment.',
+  wrongType: 'Letterdock opens .eml files only.',
+};
+const EML_PIXEL_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  (c) => c.charCodeAt(0),
+);
+const emlNames = new Map<string, string>();
+
+function fakeEmlMessage(token: string): EmlMessage | null {
+  if (token === 'demo-gone') return null;
+  const base = (over: Partial<MessageHeader>, body: Partial<MessageBody>): EmlMessage => {
+    const header: MessageHeader = {
+      id: -1, accountId: '', folderId: -1, uid: 0, messageIdHeader: '<file-demo@example.com>',
+      subject: 'Invoice for October', from: { name: 'Jane Cooper', address: 'jane@acme.example' },
+      to: [{ name: 'You', address: 'you@example.com' }, { address: 'marcus@example.com' }], cc: [{ address: 'finance@acme.example' }],
+      date: Date.parse('2026-10-05T10:42:00Z'), snippet: '', seen: true, flagged: false, answered: false, draft: false,
+      hasAttachments: false, size: 4200, bodyCached: true, ...over,
+    };
+    return {
+      token,
+      fileName: emlNames.get(token) ?? 'invoice-october.eml',
+      filePath: 'C:\\Users\\you\\Documents\\Saved mail\\invoice-october.eml',
+      header,
+      body: {
+        id: -1, header, bcc: [], replyTo: [], inReplyTo: null, references: null, html: null, text: null, attachments: [],
+        hasRemoteImages: false, senderImagesAllowed: false, truncated: false, ...body,
+      },
+    };
+  };
+  switch (token) {
+    case 'demo-html':
+      return base({}, {
+        html: '<div style="font-family:Segoe UI,Arial"><h2>October invoice</h2><p>Hello, the invoice is attached. See the picture below.</p><p><img src="cid:logo" width="64" height="64" alt="logo"></p><p><img src="https://images.example.com/banner.png" width="400" height="80" alt="banner"></p><p><a href="https://example.com/pay">Pay online</a></p><img src="https://track.example.net/open.gif?u=1" width="1" height="1" alt=""></div>',
+        text: 'October invoice',
+        hasRemoteImages: true,
+        attachments: [{ id: 1, filename: null, contentType: 'image/png', size: 95, contentId: 'logo', inline: true }],
+      });
+    case 'demo-attach':
+      return base({ hasAttachments: true }, {
+        text: 'Hello,\n\nPlease find the files attached.\n\nOn Mon, 5 Oct 2026, Jane wrote:\n> Earlier text\n> more earlier text\n',
+        attachments: [
+          { id: 1, filename: 'invoice.pdf', contentType: 'application/pdf', size: 245760, contentId: null, inline: false },
+          { id: 2, filename: 'Weekly report.eml', contentType: 'message/rfc822', size: 8123, contentId: null, inline: false },
+          { id: 3, filename: 'setup.exe', contentType: 'application/octet-stream', size: 1048576, contentId: null, inline: false },
+        ],
+      });
+    case 'demo-empty':
+      return base({ subject: '', from: null, to: [], cc: [], hasAttachments: false }, { text: null, html: null });
+    case 'demo-nosender':
+      return base({ from: null, subject: 'Message without a sender' }, { text: 'This file has no From header.' });
+    default:
+      return base({}, { text: 'Hello,\n\nThis message was saved as a file. It is shown read-only.\n\nThanks,\nJane' });
+  }
+}
+
+function fakeEmlOpen(paths: string[]): EmlOpenRes {
+  const forced = (window as unknown as { __fakeEmlResult?: EmlOpenRes }).__fakeEmlResult;
+  if (forced) return forced;
+  const res: EmlOpenRes = {
+    opened: 0,
+    total: paths.length,
+    notice: paths.length > 5 ? `Opened the first 5 of ${paths.length} files.` : null,
+    errors: [],
+  };
+  for (const path of paths.slice(0, 5)) {
+    const fileName = path.split(/[\\/]/).pop() ?? path;
+    const code = /\.msg$/i.test(fileName)
+      ? 'msgUnsupported'
+      : !/\.eml$/i.test(fileName)
+        ? 'wrongType'
+        : /big/i.test(fileName)
+          ? 'tooLarge'
+          : /junk/i.test(fileName)
+            ? 'notEmail'
+            : /bad/i.test(fileName)
+              ? 'unreadable'
+              : null;
+    if (code) {
+      res.errors.push({ code: code as EmlErrorCode, message: EML_TEXT[code]!, fileName });
+      continue;
+    }
+    const token = /html/i.test(fileName) ? 'demo-html' : /attach/i.test(fileName) ? 'demo-attach' : 'demo-plain';
+    emlNames.set(token, fileName);
+    window.open(`viewer.html?fake=1#eml=${token}`, '_blank', 'popup,width=860,height=720');
+    res.opened++;
+  }
+  return res;
 }
 
 // ---------- helpers ----------
@@ -1725,6 +1829,48 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       emit({ type: 'pending:count', accountId: 'a1', count: st.pendingCount });
       return delay(undefined, 10);
     }
+    case 'eml.pickFiles':
+      return delay(fakeEmlOpen(['C:\\Users\\you\\Documents\\invoice-october.eml']), 200);
+    case 'eml.openPaths':
+      return delay(fakeEmlOpen((r as { paths: string[] }).paths), 100);
+    case 'eml.get': {
+      const m = fakeEmlMessage((r as { token: string }).token);
+      return m ? delay(m, 150) : err('NOT_FOUND', 'This message is no longer available. Open the file again.');
+    }
+    case 'eml.cidData':
+      return delay((r as { contentId: string }).contentId === 'logo' ? { contentType: 'image/png', data: EML_PIXEL_PNG } : null, 30);
+    case 'eml.rawSource':
+      return delay({ source: 'From: Jane Cooper <jane@acme.example>\r\nTo: You <you@example.com>\r\nSubject: Invoice for October\r\nDate: Mon, 5 Oct 2026 10:42:00 +0000\r\nMessage-ID: <file-demo@example.com>\r\n\r\nHello.\r\n' }, 60);
+    case 'eml.compose': {
+      const q = r as { token: string; mode: 'reply' | 'replyAll' | 'forward' };
+      const m = fakeEmlMessage(q.token);
+      if (!m) return err('NOT_FOUND', 'This message is no longer available. Open the file again.');
+      const draftId = `d${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+      const subject = m.header.subject;
+      const own = new Set(accounts.map((a) => a.email.toLowerCase()));
+      const to = q.mode === 'forward' ? [] : m.header.from ? [m.header.from] : [];
+      const cc = q.mode === 'replyAll' ? [...m.header.to, ...m.header.cc].filter((a) => !own.has(a.address.toLowerCase())) : [];
+      saveDrafts({
+        ...drafts(),
+        [draftId]: {
+          draftId, accountId: accounts[0]!.id, to, cc, bcc: [],
+          subject: q.mode === 'forward' ? (/^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`) : /^re:/i.test(subject) ? subject : `Re: ${subject}`,
+          html: `<p><br></p><div class="letterdock-quote-intro">On ${new Date(m.header.date).toLocaleString()}, ${m.header.from?.name ?? 'someone'} wrote:</div><blockquote class="letterdock-quote" type="cite">${m.body.text ?? ''}</blockquote>`,
+          attachmentTokens: [],
+        },
+      });
+      return delay({ draftId }, 80);
+    }
+    case 'eml.saveAttachment':
+      return delay({ saved: true }, 200);
+    case 'eml.saveAllAttachments':
+      return delay({ saved: 2 }, 300);
+    case 'eml.showInFolder':
+      return delay(undefined, 10);
+    case 'eml.print': {
+      (window as unknown as { __lastPrint?: unknown }).__lastPrint = r;
+      return delay({ printed: true }, 400);
+    }
     case 'sync.all':
     case 'sync.account':
     case 'sync.folder':
@@ -1819,6 +1965,8 @@ export function installFakeApi(): void {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
+    // A dropped File has no real path in a browser. Dev: use the file name, so the fake can pick a scenario.
+    pathForFile: (file) => `C:\\Users\\you\\Documents\\${file.name}`,
   };
   (window as unknown as { api: PreloadApi }).api = api;
   if (!isComposeWindow && !isViewerWindow) armOutbox();

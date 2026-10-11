@@ -110,6 +110,10 @@ export function useAppEvents(): void {
         call('compose.openWindow', { mode: 'new', mailto: e.mailto }).catch((err) =>
           toastError((err as { message?: string }).message ?? 'Could not open the message.'),
         );
+      } else if (e.type === 'ui:emlNotice') {
+        // A .eml file opened from outside (Open with, double-click) could not be opened, or only the first 5 were.
+        if (e.tone === 'error') toastError(e.message);
+        else toast(e.message);
       } else if (e.type === 'conversations:changed') {
         // The open conversation and the list reload. About 2000 ids mean "everything".
         useConvSignal.getState().bump(e.threadIds);

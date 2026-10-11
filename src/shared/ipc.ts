@@ -3,6 +3,8 @@
 // Normative description: docs/ARCHITECTURE.md section 6 (plus section 0 additions).
 // Pure TypeScript: no node / electron imports.
 
+import type { EmlErrorCode } from './emlErrors';
+
 // ---------- primitives ----------
 export type AccountId = string;
 export type FolderId = number;
@@ -1061,6 +1063,38 @@ export interface PrintMessageRes {
   /** false if the user closed the print dialog without printing. */
   printed: boolean;
 }
+/** One message opened from an .eml file (DESIGN-SPEC 3.14). Everything the message window needs. */
+export interface EmlMessage {
+  /** Opaque id the main process gave this file. The path is never in a URL or a request. */
+  token: string;
+  /** File name only (for the banner). */
+  fileName: string;
+  /** Full path (for the banner tooltip). Never sent back to main: "Show in folder" asks by token. */
+  filePath: string;
+  /**
+   * Same shape as a mailbox message, with stand-in values: `id` is -1, `accountId` is '', `folderId`
+   * is -1, `seen` is true. Attachment ids are 1, 2, 3... (their position) and only mean something
+   * together with the token. `body.html` is RAW like for mailbox mail; the window sanitizes it.
+   */
+  header: MessageHeader;
+  body: MessageBody;
+}
+export interface EmlOpenError {
+  code: EmlErrorCode;
+  /** The exact text for the user (see shared/emlErrors.ts). */
+  message: string;
+  fileName: string;
+}
+export interface EmlOpenRes {
+  /** Message windows opened or brought to the front. */
+  opened: number;
+  /** Files in the request. When above 5, only the first 5 are tried. */
+  total: number;
+  /** "Opened the first 5 of 8 files." when `total` is above 5, else null. */
+  notice: string | null;
+  errors: EmlOpenError[];
+}
+export type EmlComposeMode = 'reply' | 'replyAll' | 'forward';
 export interface MailtoStatus {
   /** This app is registered as a mailto: handler (always false in unpackaged dev runs). */
   registered: boolean;
@@ -1227,6 +1261,35 @@ export interface IpcMethods {
   'senders.listAllowed': { req: void; res: string[] };
   /** Open the message in its own window (main). Opening it again focuses the existing window. */
   'message.openWindow': { req: OpenMessageWindowReq; res: void };
+
+  // .eml files (DESIGN-SPEC 3.14). The window asks by token only, never by path.
+  /** Windows file picker (filter "Email message (*.eml)", several files); opens what was chosen. Never throws for a bad file: see `errors`. */
+  'eml.pickFiles': { req: void; res: EmlOpenRes };
+  /** Files dropped on the main window (paths from `window.api.pathForFile`). Main checks every path again. */
+  'eml.openPaths': { req: { paths: string[] }; res: EmlOpenRes };
+  /** The parsed message of this window. Rejects NOT_FOUND when the engine restarted since the file was opened. */
+  'eml.get': { req: { token: string }; res: EmlMessage };
+  /** Inline `cid:` image of the file message (like `attachments.cidData`). */
+  'eml.cidData': {
+    req: { token: string; contentId: string };
+    res: { contentType: string; data: Uint8Array } | null;
+  };
+  /** The raw text of the file (View source). */
+  'eml.rawSource': { req: { token: string }; res: { source: string } };
+  /**
+   * Reply / Reply all / Forward from the file message. The engine builds the draft now (body,
+   * headers, attachments; default account) and answers its id; then call
+   * `compose.openWindow({ mode, draftId })`. Rejects INVALID_INPUT "Add an account to reply." with no account.
+   */
+  'eml.compose': { req: { token: string; mode: EmlComposeMode }; res: { draftId: string } };
+  /** Save dialog for one attachment (`AttachmentInfo.id` of the file message). Nothing is opened or run. */
+  'eml.saveAttachment': { req: { token: string; attachmentId: number }; res: { saved: boolean } };
+  /** Folder picker, then every non-inline attachment is written there (names made safe, nothing overwritten). */
+  'eml.saveAllAttachments': { req: { token: string }; res: { saved: number } };
+  /** Reveal the .eml file in Explorer. */
+  'eml.showInFolder': { req: { token: string }; res: void };
+  /** Print through the system dialog; same as `message.print` for a file message. */
+  'eml.print': { req: { token: string; bodyHtml?: string }; res: PrintMessageRes };
   /** Print through the system print dialog (also "Save as PDF"). See PrintMessageReq. */
   'message.print': { req: PrintMessageReq; res: PrintMessageRes };
   /**
@@ -1442,6 +1505,12 @@ export type AppEvent =
    */
   | { type: 'ui:undoAvailable'; label: string; undoToken: string; count: number }
   | { type: 'ui:compose'; mailto: string }
+  /**
+   * Sent to the MAIN window: show a toast for a file opened from outside the app (Open with,
+   * double-click while Letterdock runs). `error` for a file that could not be opened, `info` for
+   * "Opened the first 5 of 8 files.".
+   */
+  | { type: 'ui:emlNotice'; tone: 'error' | 'info'; message: string }
   /** Sent to the main window: show Settings on this page. */
   | { type: 'ui:openSettings'; section: 'mail'; anchor?: 'quick-replies' }
   | { type: 'engine:restarted' }; // renderer must reload state
@@ -1453,6 +1522,11 @@ export type InvokeArgs<C extends IpcChannel> = [IpcReq<C>] extends [void] ? [] :
 export interface PreloadApi {
   invoke<C extends IpcChannel>(channel: C, ...args: InvokeArgs<C>): Promise<IpcRes<C>>;
   on(cb: (e: AppEvent) => void): () => void; // returns unsubscribe
+  /**
+   * The path of a File the user dropped (Electron removed `File.path`). Returns '' when the file has
+   * no path on disk. Use it only to build the `eml.openPaths` request.
+   */
+  pathForFile(file: File): string;
 }
 declare global {
   interface Window {

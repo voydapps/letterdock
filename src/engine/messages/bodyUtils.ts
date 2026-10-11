@@ -1,7 +1,5 @@
 // Pure helpers for cached bodies.
 
-import { replaceControlChars } from '../../shared/safety';
-
 const NAMED_ENTITIES: Record<string, string> = {
   nbsp: ' ',
   amp: '&',
@@ -148,22 +146,5 @@ export function hasRemoteImages(html: string | null): boolean {
   );
 }
 
-const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
-
-/** Make an attachment name safe to use as a Windows file name. */
-export function safeFileName(name: string | null | undefined, fallback = 'attachment'): string {
-  let n = replaceControlChars(name ?? '', '_')
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .trim();
-  n = n.replace(/^\.+/, '').replace(/[. ]+$/, '');
-  if (!n) n = fallback;
-  if (RESERVED.test(n)) n = '_' + n;
-  if (n.length > 120) {
-    const dot = n.lastIndexOf('.');
-    const ext = dot > 0 && n.length - dot <= 12 ? n.slice(dot) : '';
-    n = n.slice(0, 120 - ext.length) + ext;
-  }
-  return n;
-}
-
+export { safeFileName } from '../../shared/fileName';
 export { isExecutableName } from '../../shared/safety';

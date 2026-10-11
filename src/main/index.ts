@@ -54,6 +54,8 @@ import { SettingsStore } from './settings';
 import { createMainWindow } from './window';
 import { AppUpdater, type UpdaterLike } from './updater';
 import { findMailtoArg } from './mailto';
+import { findEmlArgs } from './emlArg';
+import { EmlOpener } from './emlOpener';
 import { cleanPrintTemp } from './print/printWindow';
 import { ViewerWindows } from './viewerWindow';
 import { BoundsStore, COMPOSE_RULES } from './windowBounds';
@@ -330,6 +332,23 @@ async function boot(): Promise<void> {
       w.on('closed', () => appWindows.delete(w));
     },
   });
+  // ---- .eml files (DESIGN-SPEC 3.14) ----
+  const eml = new EmlOpener({
+    engineOpen: (req) => engine.request('eml.open', req),
+    engineClose: (token) => engine.request('eml.close', { token }),
+    openWindow: (token, onClosed) => {
+      const w = viewers.openEml(token, onClosed);
+      return {
+        focus: () => {
+          if (w.isDestroyed()) return;
+          if (w.isMinimized()) w.restore();
+          w.show();
+          w.focus();
+        },
+      };
+    },
+    log,
+  });
   const printTemp = join(app.getPath('temp'), 'letterdock-print');
   void cleanPrintTemp(printTemp);
 
@@ -371,6 +390,7 @@ async function boot(): Promise<void> {
     oauth,
     openCompose,
     openViewer: (messageId) => void viewers.open(messageId),
+    eml,
     onSettingsChanged: (patch) => applySettingsChange(patch),
     print: { imagesHandle: images.handle, tempDir: printTemp },
     showUndoInMain: (e) => relayUndoToMain(mainWindow, e),
@@ -485,13 +505,39 @@ async function boot(): Promise<void> {
 
   ensureMainWindow(shouldStartHidden(process.argv.slice(1), settings.get(), trayOk));
 
-  // mailto: links. A second launch (the user clicked a link while we run) arrives as an argument.
+  // mailto: links and .eml files. A second launch (the user clicked a link or opened a file while we
+  // run) arrives as an argument.
   const openMailto = (url: string) => openCompose({ mode: 'new', mailto: url });
+  const mainVisible = () =>
+    !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized();
+  /**
+   * Opens .eml files from the command line. A problem is shown in a toast in the main window; when
+   * the app was just started by the file (or the main window is hidden in the tray) nobody would see
+   * that, so a small error window opens instead (3.14.4).
+   */
+  const openEmlFiles = async (paths: string[], startup: boolean): Promise<void> => {
+    const res = await eml.openPaths(paths);
+    const toastable = !startup && mainVisible();
+    if (res.errors.length > 0 && !toastable) {
+      viewers.openEmlError(res.errors[0]!.code);
+      return;
+    }
+    for (const e of res.errors) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('event', { type: 'ui:emlNotice', tone: 'error', message: e.message } satisfies AppEvent);
+      }
+    }
+    if (res.notice && toastable && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('event', { type: 'ui:emlNotice', tone: 'info', message: res.notice } satisfies AppEvent);
+    }
+  };
   app.on('second-instance', (_e, argv) => {
     const args = argv.slice(1);
     const mailto = findMailtoArg(args);
+    const emlPaths = findEmlArgs(args);
     if (mailto) openMailto(mailto);
-    else if (!isHiddenOnlyLaunch(args, false)) focusMain();
+    if (emlPaths.length > 0) void openEmlFiles(emlPaths, false);
+    if (!mailto && emlPaths.length === 0 && !isHiddenOnlyLaunch(args, false)) focusMain();
   });
   app.on('open-url', (e, url) => {
     // macOS-style delivery; kept so the handler works if the code is ever built there.
@@ -503,6 +549,8 @@ async function boot(): Promise<void> {
   registerMailtoHandler(dataDir, log);
   const firstMailto = findMailtoArg(process.argv.slice(1));
   if (firstMailto) openMailto(firstMailto);
+  const firstEml = findEmlArgs(process.argv.slice(1));
+  if (firstEml.length > 0) void openEmlFiles(firstEml, true);
 
   // The PC woke up or was unlocked: the clock may have jumped, so look at scheduled mail again.
   powerMonitor.on('resume', () => void engine.request('scheduled.recheck', { reason: 'resume' }).catch(() => undefined));

@@ -1,5 +1,5 @@
 // The ONLY thing exposed to the renderer: window.api = { invoke, on }.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { AppEvent, IpcChannel, PreloadApi } from '../shared/ipc';
 
 type Envelope = { ok: true; value: unknown } | { ok: false; error: unknown };
@@ -17,6 +17,13 @@ const api: PreloadApi = {
     return () => {
       ipcRenderer.removeListener('event', listener);
     };
+  },
+  pathForFile(file: File) {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
   },
 };
 

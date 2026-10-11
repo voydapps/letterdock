@@ -92,6 +92,23 @@ export interface MainToEngineMethods {
     req: { accountId: string; messageId: number; action: 'read' | 'archive' | 'delete' };
     res: { done: boolean; undoToken?: string };
   };
+  /** A .eml file read by main (3.14): the engine parses it and keeps the message under `token`. Rejects INVALID_INPUT with `details` = an EmlErrorCode. */
+  'eml.open': {
+    req: { token: string; data: Uint8Array; fileName: string; filePath: string; mtimeMs: number };
+    res: { subject: string };
+  };
+  /** The window of this file closed: forget the message. */
+  'eml.close': { req: { token: string }; res: void };
+  /** One attachment of a file message (bytes), for "Save". */
+  'eml.attachment': {
+    req: { token: string; attachmentId: number };
+    res: { filename: string; contentType: string; data: Uint8Array };
+  };
+  /** All non-inline attachments of a file message, for "Save all". */
+  'eml.attachments': {
+    req: { token: string };
+    res: { filename: string; contentType: string; data: Uint8Array }[];
+  };
   /** The PC woke up from sleep or was unlocked: check the scheduled messages again. */
   'scheduled.recheck': { req: { reason: 'resume' | 'unlock' }; res: void };
 }

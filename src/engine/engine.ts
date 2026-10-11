@@ -1,6 +1,6 @@
 // Wires repos and services together. Used by engine/index.ts (utility process) and by tests.
 import { join } from 'node:path';
-import type { AppEvent, AppSettings, IpcReq, IpcRes } from '../shared/ipc';
+import type { AppEvent, AppSettings, ComposeMode, IpcReq, IpcRes } from '../shared/ipc';
 import type { EngineChannel } from '../shared/channels';
 import type { MainToEngineMethods } from '../shared/internal';
 import { makeNetworkDeps, type DiscoverDeps } from './accounts/autodiscover';
@@ -18,6 +18,7 @@ import { ScheduledService } from './smtp/scheduledService';
 import { SearchService } from './search/searchService';
 import { ActionService } from './messages/actionService';
 import { MessageService } from './messages/messageService';
+import { EmlService } from './messages/emlService';
 import { ConversationService } from './messages/conversationService';
 import { RulesService } from './messages/rulesService';
 import { ThreadBackfill } from './messages/threadBackfill';
@@ -112,6 +113,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const search = new SearchService(ctx, sessions);
   const compose = new ComposeService(ctx, sessions, messages, actions);
   const scheduled = new ScheduledService(ctx, sessions, compose);
+  const eml = new EmlService(ctx, (src, mode, files) => compose.prepareFromParsed(src, mode as Exclude<ComposeMode, 'new'>, files));
   const rules = new RulesService(ctx, actions);
   const conversations = new ConversationService(ctx, messages, actions);
   const lightUndo = new LightUndo(() => ctx.now());
@@ -170,6 +172,10 @@ export function createEngine(opts: EngineOptions): Engine {
     'conversations.get': (r) => conversations.get(r),
     'conversations.act': (r) => conversations.act(r),
     'attachments.cidData': (r) => messages.cidData(r.messageId, r.contentId),
+    'eml.get': (r) => eml.get(r.token),
+    'eml.cidData': (r) => eml.cidData(r.token, r.contentId),
+    'eml.rawSource': (r) => eml.rawSource(r.token),
+    'eml.compose': (r) => eml.composeFrom(r.token, r.mode),
 
     'folders.empty': (r) => actions.emptyFolder(r.folderId),
     'messages.undo': (r) => (lightUndo.has(r.undoToken) ? lightUndo.undo(r.undoToken) : actions.undo(r.undoToken)),
@@ -258,6 +264,10 @@ export function createEngine(opts: EngineOptions): Engine {
       | 'engine.settings'
       | 'attachments.prepare'
       | 'messages.sourceBytes'
+      | 'eml.open'
+      | 'eml.close'
+      | 'eml.attachment'
+      | 'eml.attachments'
       | 'attachments.register'
       | 'accounts.reconnect'
       | 'unsubscribe.record'
@@ -272,6 +282,10 @@ export function createEngine(opts: EngineOptions): Engine {
     'engine.settings': () => cleanBodyCache(),
     'attachments.prepare': (r) => messages.prepareAttachment(r.attachmentId),
     'messages.sourceBytes': (r) => messages.sourceBytes(r.messageId),
+    'eml.open': (r) => eml.open(r),
+    'eml.close': (r) => eml.close(r.token),
+    'eml.attachment': (r) => eml.attachment(r.token, r.attachmentId),
+    'eml.attachments': (r) => eml.attachments(r.token),
     'attachments.register': async (r) => {
       const out = [];
       for (const f of r.files) out.push(await compose.registerFile(f.path, f.filename, f.contentType));

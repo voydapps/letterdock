@@ -473,6 +473,16 @@ export function composeFrom(mode: Exclude<ComposeMode, 'new'>, id: MessageId | u
   openCompose({ mode, sourceMessageId: id });
 }
 
+/**
+ * Reply, Reply all or Forward of a message from an opened .eml file. The engine builds the draft at
+ * once (so the file window may close afterwards), then the compose window opens on it.
+ */
+export function composeFromEml(token: string, mode: Exclude<ComposeMode, 'new'>): void {
+  call('eml.compose', { token, mode })
+    .then((r) => call('compose.openWindow', { mode, draftId: r.draftId }))
+    .catch((e) => toastError(asAppError(e).message));
+}
+
 /** Open a draft from the Drafts folder in the compose window. */
 export function editDraft(id: MessageId): void {
   openCompose({ mode: 'new', draftMessageId: id });

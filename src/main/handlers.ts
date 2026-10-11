@@ -11,11 +11,14 @@ import type {
   MessageHeader,
   PrepareComposeReq,
   AppSettings,
+  EmlMessage,
+  PrintMessageRes,
 } from '../shared/ipc';
 import type { MainChannel } from '../shared/channels';
 import { AppException } from '../shared/errors';
 import type { PreparedAttachment } from '../shared/internal';
 import { isExecutableName, isSafeExternalUrl } from '../shared/safety';
+import { safeFileName } from '../shared/fileName';
 import type { EngineHost } from './engineHost';
 import type { OAuthService } from './oauth/service';
 import type { Logger } from './logger';
@@ -23,6 +26,8 @@ import type { AppUpdater } from './updater';
 import type { SettingsStore } from './settings';
 import type { ImageDiskCache } from './imageCache/store';
 import { computeMailtoStatus, DEFAULT_APPS_URI } from './mailto';
+import type { EmlOpener } from './emlOpener';
+import { saveAttachmentsToFolder } from './emlSave';
 import { buildPrintDocument } from './print/printDocument';
 import { printDocument, type PrintDeps } from './print/printWindow';
 import { SavedPaths, saveEml } from './saveEml';
@@ -47,6 +52,8 @@ export interface HandlerDeps {
   openCompose: (req: PrepareComposeReq) => void;
   /** Opens (or focuses) the message window. */
   openViewer: (messageId: number) => void;
+  /** Opens .eml files in message windows (DESIGN-SPEC 3.14). */
+  eml: EmlOpener;
   /**
    * Called after a setting was saved: `patch` is the part that changed, or null when the OAuth
    * settings changed. Main applies side effects (login item, log level) and tells every window.
@@ -73,6 +80,32 @@ export function createMainHandlers(d: HandlerDeps): MainHandlers {
   }
 
   const savedPaths = new SavedPaths();
+
+  async function printMessage(h: MessageHeader, body: MessageBody | null, bodyHtml: string | undefined): Promise<PrintMessageRes> {
+    let text = '';
+    if (bodyHtml === undefined && body) {
+      // No sanitized HTML given: print the plain text (made from the HTML if there is no text part).
+      text =
+        body.text ??
+        (body.html
+          ? htmlToText(body.html, { wordwrap: false, selectors: [{ selector: 'img', format: 'skip' }] })
+          : '');
+    }
+    const html = buildPrintDocument({
+      subject: h.subject,
+      from: h.from,
+      to: h.to,
+      cc: h.cc,
+      bcc: body?.bcc ?? [],
+      attachments: (body?.attachments ?? [])
+        .filter((a) => !a.inline)
+        .map((a) => ({ filename: a.filename, size: a.size })),
+      date: h.date,
+      bodyHtml: bodyHtml ?? null,
+      text,
+    });
+    return { printed: await printDocument(html, d.print) };
+  }
 
   return {
     'oauth.getSettings': () => d.settings.getOAuth(),
@@ -135,29 +168,57 @@ export function createMainHandlers(d: HandlerDeps): MainHandlers {
         // Without the renderer's HTML we need the body to print anything.
         if (r.bodyHtml === undefined) throw e;
       }
-      let text = '';
-      if (r.bodyHtml === undefined && body) {
-        // No sanitized HTML given: print the plain text (made from the HTML if there is no text part).
-        text =
-          body.text ??
-          (body.html
-            ? htmlToText(body.html, { wordwrap: false, selectors: [{ selector: 'img', format: 'skip' }] })
-            : '');
-      }
-      const html = buildPrintDocument({
-        subject: h.subject,
-        from: h.from,
-        to: h.to,
-        cc: h.cc,
-        bcc: body?.bcc ?? [],
-        attachments: (body?.attachments ?? [])
-          .filter((a) => !a.inline)
-          .map((a) => ({ filename: a.filename, size: a.size })),
-        date: h.date,
-        bodyHtml: r.bodyHtml ?? null,
-        text,
+      return printMessage(h, body, r.bodyHtml);
+    },
+    'eml.print': async (r) => {
+      const m = await d.engine.request<EmlMessage>('eml.get', { token: r.token });
+      return printMessage(m.header, m.body, r.bodyHtml);
+    },
+    'eml.pickFiles': async () => {
+      const parent = BrowserWindow.getFocusedWindow() ?? d.getWindow();
+      const opts = {
+        title: 'Open message file',
+        properties: ['openFile' as const, 'multiSelections' as const],
+        filters: [{ name: 'Email message (*.eml)', extensions: ['eml'] }],
+      };
+      const res = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts);
+      if (res.canceled || res.filePaths.length === 0) return { opened: 0, total: 0, notice: null, errors: [] };
+      return d.eml.openPaths(res.filePaths);
+    },
+    'eml.openPaths': (r) => d.eml.openPaths(r.paths),
+    'eml.saveAttachment': async (r) => {
+      const att = await d.engine.request<{ filename: string; data: Uint8Array }>('eml.attachment', {
+        token: r.token,
+        attachmentId: r.attachmentId,
       });
-      return { printed: await printDocument(html, d.print) };
+      const parent = BrowserWindow.getFocusedWindow() ?? d.getWindow();
+      const name = safeFileName(att.filename);
+      const opts = { defaultPath: join(app.getPath('downloads'), name) };
+      const res = parent ? await dialog.showSaveDialog(parent, opts) : await dialog.showSaveDialog(opts);
+      if (res.canceled || !res.filePath) return { saved: false };
+      await writeFile(res.filePath, att.data);
+      savedPaths.add(res.filePath);
+      return { saved: true };
+    },
+    'eml.saveAllAttachments': async (r) => {
+      const parent = BrowserWindow.getFocusedWindow() ?? d.getWindow();
+      const opts = {
+        title: 'Choose a folder for the attachments',
+        defaultPath: app.getPath('downloads'),
+        properties: ['openDirectory' as const, 'createDirectory' as const],
+      };
+      const res = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts);
+      const folder = res.filePaths[0];
+      if (res.canceled || !folder) return { saved: 0 };
+      const list = await d.engine.request<{ filename: string; data: Uint8Array }[]>('eml.attachments', {
+        token: r.token,
+      });
+      return { saved: await saveAttachmentsToFolder(folder, list) };
+    },
+    'eml.showInFolder': (r) => {
+      const p = d.eml.pathOf(r.token);
+      if (!p) throw new AppException('NOT_FOUND', 'This message file is no longer open.');
+      shell.showItemInFolder(p);
     },
     'messages.saveEml': async (r) => {
       const res = await saveEml(

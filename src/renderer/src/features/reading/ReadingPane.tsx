@@ -17,7 +17,8 @@ import { useApp } from '../../store/app';
 import { openIdOf, useList, type ListItem } from '../../store/list';
 import { useUi } from '../../store/ui';
 import { useAccountColor, useThemeState } from '../../lib/hooks';
-import { applyToMessages, composeFrom, deleteMessages, editDraft, openInWindow, roleOf, saveAsEml } from '../../lib/actions';
+import { useFileMode, type FileMode } from './fileMode';
+import { applyToMessages, composeFrom, composeFromEml, deleteMessages, editDraft, openInWindow, roleOf, saveAsEml } from '../../lib/actions';
 import { printOpenMessage, registerPrintSource } from '../../lib/print';
 import { asAppError, call } from '../../lib/api';
 import { fileKind, fileSize, fullDate, initials, senderName } from '../../lib/format';
@@ -174,7 +175,8 @@ export function MessageView({
   const markDelay = windowMode && markDelaySetting >= 0 ? 0 : markDelaySetting;
   const epoch = useApp((s) => s.epoch);
   const colorOf = useAccountColor();
-  const [state, setState] = useState<BodyState>({ status: 'loading' });
+  const file = useFileMode();
+  const [state, setState] = useState<BodyState>(file ? { status: 'ready', body: file.message.body } : { status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [details, setDetails] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -201,11 +203,12 @@ export function MessageView({
   // Gives Ctrl+P and the Print buttons the sanitized light body of the message on screen.
   const printRef = useRef<() => string | undefined | null>(() => null);
   useEffect(
-    () => registerPrintSource({ messageId: header.id, getBodyHtml: () => printRef.current() }),
-    [header.id],
+    () => registerPrintSource({ messageId: header.id, ...(file ? { emlToken: file.token } : {}), getBodyHtml: () => printRef.current() }),
+    [header.id, file],
   );
 
   useEffect(() => {
+    if (file) return; // a file message arrives with the window
     let alive = true;
     call('messages.get', { messageId: header.id })
       .then((body) => alive && setState({ status: 'ready', body }))
@@ -213,7 +216,7 @@ export function MessageView({
     return () => {
       alive = false;
     };
-  }, [header.id, attempt, epoch]);
+  }, [header.id, attempt, epoch, file]);
 
   // Mark as read after the delay from Settings (-1 = never, 0 = right away).
   const seen = header.seen;
@@ -227,7 +230,8 @@ export function MessageView({
   const body = state.status === 'ready' ? state.body : null;
   // Images load by themselves for senders the user allowed, when Settings says so.
   const autoImages = !!body?.senderImagesAllowed && remoteImages === 'allowKnownSenders';
-  const senderAddress = header.from?.address ?? null;
+  // "Always load from sender" is for mailbox mail; a file only has "Load images" (this window).
+  const senderAddress = file ? null : (header.from?.address ?? null);
 
   const alwaysLoad = async () => {
     if (!senderAddress) return;
@@ -257,6 +261,7 @@ export function MessageView({
         colorToggle={toggleColors}
         windowMode={windowMode}
         gone={gone}
+        file={file}
       />
       {gone ? (
         <div className="rbanner gone" role="status">
@@ -339,8 +344,10 @@ function Toolbar({
   colorToggle,
   windowMode,
   gone,
+  file,
 }: {
   header: MessageHeader;
+  file: FileMode | null;
   unsub: UnsubscribeState;
   onSource: () => void;
   colorToggle: { label: string; icon: 'sun' | 'moon'; run: () => void } | null;
@@ -350,6 +357,7 @@ function Toolbar({
   const inJunk = roleOf(header) === 'junk';
   const isDraft = header.draft || roleOf(header) === 'drafts';
   const print = () => printOpenMessage(header.id);
+  if (file) return <FileToolbar file={file} onSource={onSource} onPrint={print} />;
   const readIcon = header.seen ? 'unread' : 'mail-open';
   const role = roleOf(header);
   const snoozeable = !isDraft && (canSnoozeRole(role) || header.snoozedUntil !== undefined);
@@ -559,6 +567,65 @@ function Toolbar({
   );
 }
 
+/**
+ * Toolbar of a message window that shows an .eml file (DESIGN-SPEC 3.14.3): Reply, Reply all, Forward
+ * | Print, "...". No mailbox actions (archive, delete, move, flag...), because the message is not in a mailbox.
+ */
+function FileToolbar({ file, onSource, onPrint }: { file: FileMode; onSource: () => void; onPrint: () => void }) {
+  const hasAccount = useApp((s) => s.accounts.length > 0);
+  const tip = hasAccount ? undefined : 'Add an account to reply.';
+  const go = (mode: 'reply' | 'replyAll' | 'forward') => () => composeFromEml(file.token, mode);
+  const from = file.message.header.from;
+  const more = (el: HTMLElement) =>
+    openMenuAt(el, [
+      ...(from
+        ? [
+            {
+              label: 'Copy sender address',
+              onSelect: () =>
+                void navigator.clipboard.writeText(from.address).then(() => toast('Address copied.'), () => toastError('Could not copy.')),
+            },
+          ]
+        : []),
+      { label: 'View source', onSelect: onSource },
+      {
+        label: 'Select all',
+        hint: 'Ctrl+A',
+        onSelect: () => {
+          const frame = document.querySelector<HTMLIFrameElement>('.mbody iframe');
+          const w = frame?.contentWindow;
+          if (w) {
+            w.focus();
+            w.document.execCommand('selectAll');
+          }
+        },
+      },
+    ]);
+  return (
+    <div className="rtool" role="toolbar" aria-label="Message actions" style={{ overflow: 'hidden' }}>
+      <button type="button" className="tbtn" title={tip ?? 'Reply (Ctrl+R)'} disabled={!hasAccount} onClick={go('reply')}>
+        <Icon name="reply" size={20} />
+        <span className="lbl">Reply</span>
+      </button>
+      <button type="button" className="tbtn" aria-label="Reply all" title={tip ?? 'Reply all (Ctrl+Shift+R)'} disabled={!hasAccount} onClick={go('replyAll')}>
+        <Icon name="replyall" size={20} />
+        <span className="lbl">Reply all</span>
+      </button>
+      <button type="button" className="tbtn" title={tip ?? 'Forward (Ctrl+F)'} disabled={!hasAccount} onClick={go('forward')}>
+        <Icon name="fwd" size={20} />
+        <span className="lbl">Forward</span>
+      </button>
+      <span className="tsep" />
+      <button type="button" className="tbtn ico" title="Print (Ctrl+P)" aria-label="Print" onClick={onPrint}>
+        <Icon name="print" size={20} />
+      </button>
+      <button type="button" className="tbtn ico" title="More" aria-label="More actions" aria-haspopup="menu" onClick={(e) => more(e.currentTarget)}>
+        <Icon name="more" size={20} />
+      </button>
+    </div>
+  );
+}
+
 function HeaderBlock({
   header,
   body,
@@ -682,6 +749,7 @@ function BodyView({
   /** Show the "Blocked N trackers" line (not for Sent and Drafts). */
   trackerNote?: boolean;
 }) {
+  const file = useFileMode();
   const darkTheme = useThemeState((s) => s.dark);
   const showTrackerNotice = useApp((s) => s.settings?.showTrackerNotice ?? true);
   // The tracker list loads the first time an HTML message opens (DESIGN-SPEC 3.13.7). Until then the message waits a moment.
@@ -712,7 +780,9 @@ function BodyView({
         const att = byCid.get(r);
         if (!att || att.size > 2 * 1024 * 1024) return null;
         try {
-          const res = await call('attachments.cidData', { messageId: body.id, contentId: att.contentId! });
+          const res = file
+            ? await call('eml.cidData', { token: file.token, contentId: att.contentId! })
+            : await call('attachments.cidData', { messageId: body.id, contentId: att.contentId! });
           if (!res || res.data.length > 2 * 1024 * 1024) return null;
           return [r, toDataUrl(res.contentType, res.data)] as const;
         } catch {
@@ -726,7 +796,7 @@ function BodyView({
     return () => {
       alive = false;
     };
-  }, [body, refs]);
+  }, [body, refs, file]);
 
   const sanitized: SanitizedHtml | null = useMemo(
     () => (body.html && cidReady && trk ? sanitizeEmailHtml(body.html, cid, trk) : null),
@@ -1102,8 +1172,18 @@ function TextBody({ text }: { text: string }) {
 
 // ---------- attachments ----------
 function Attachments({ list }: { list: AttachmentInfo[] }) {
+  const file = useFileMode();
   if (list.length === 0) return null;
   const saveAll = async () => {
+    if (file) {
+      try {
+        const r = await call('eml.saveAllAttachments', { token: file.token });
+        if (r.saved > 0) toast(r.saved === 1 ? 'Saved 1 attachment.' : `Saved ${r.saved} attachments.`);
+      } catch (e) {
+        reportActionError(e);
+      }
+      return;
+    }
     for (const a of list) {
       try {
         const r = await call('attachments.saveAs', { attachmentId: a.id });
@@ -1132,6 +1212,7 @@ function Attachments({ list }: { list: AttachmentInfo[] }) {
 }
 
 function AttachmentChip({ a }: { a: AttachmentInfo }) {
+  const file = useFileMode();
   const [busy, setBusy] = useState(false);
   const name = a.filename ?? 'attachment';
   const kind = fileKind(a.filename, a.contentType);
@@ -1149,15 +1230,17 @@ function AttachmentChip({ a }: { a: AttachmentInfo }) {
   const save = async () => {
     setBusy(true);
     try {
-      await call('attachments.saveAs', { attachmentId: a.id });
+      if (file) await call('eml.saveAttachment', { token: file.token, attachmentId: a.id });
+      else await call('attachments.saveAs', { attachmentId: a.id });
     } catch (e) {
       reportActionError(e);
     } finally {
       setBusy(false);
     }
   };
+  // A file message never runs its attachments: Save only (DESIGN-SPEC 3.14.5).
   const items = () => [
-    { label: 'Open', onSelect: () => void open() },
+    ...(file ? [] : [{ label: 'Open', onSelect: () => void open() }]),
     { label: 'Save as...', onSelect: () => void save() },
     {
       label: 'Copy file name',
@@ -1175,8 +1258,8 @@ function AttachmentChip({ a }: { a: AttachmentInfo }) {
       <button
         type="button"
         style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textAlign: 'left', height: '100%' }}
-        onClick={() => void open()}
-        aria-label={`Open ${name}, ${fileSize(a.size)}${risky ? ', this type of file can run programs' : ''}`}
+        onClick={() => void (file ? save() : open())}
+        aria-label={`${file ? 'Save' : 'Open'} ${name}, ${fileSize(a.size)}${risky ? ', this type of file can run programs' : ''}`}
       >
         <span className={`ft ${risky ? 'risk' : kind.cls}`}>
           {busy ? <i className="spin" /> : risky ? <Icon name="warn" /> : kind.label}
@@ -1197,13 +1280,14 @@ function AttachmentChip({ a }: { a: AttachmentInfo }) {
 }
 
 export function SourceDialog({ id, onClose }: { id: number; onClose: () => void }) {
+  const file = useFileMode();
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
-    call('messages.rawSource', { messageId: id })
+    (file ? call('eml.rawSource', { token: file.token }) : call('messages.rawSource', { messageId: id }))
       .then((r) => setSrc(r.source))
       .catch((e) => setErr(asAppError(e).message));
-  }, [id]);
+  }, [id, file]);
   return (
     <Dialog title="Message source" size="lg" onClose={onClose}>
       {err ? (

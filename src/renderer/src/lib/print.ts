@@ -7,6 +7,8 @@ import { toast, toastError, useToasts } from '../store/toasts';
 
 export interface PrintSource {
   messageId: MessageId;
+  /** Set in a message window that shows an .eml file: print through `eml.print`. */
+  emlToken?: string;
   /** Sanitized light body, or undefined for a plain text message. Null while the body is still loading. */
   getBodyHtml: () => string | undefined | null;
 }
@@ -29,17 +31,19 @@ export function cleanForPrint(html: string): string {
   return doc.body.innerHTML;
 }
 
-export async function printMessage(messageId: MessageId, bodyHtml?: string): Promise<void> {
+export async function printMessage(messageId: MessageId, bodyHtml?: string, emlToken?: string): Promise<void> {
   let preparing: number | null = window.setTimeout(() => {
     preparing = null;
     toast('Preparing to print...', { duration: 2500 });
   }, 1000);
   try {
-    await call('message.print', { messageId, ...(bodyHtml ? { bodyHtml: cleanForPrint(bodyHtml) } : {}) });
+    const html = bodyHtml ? { bodyHtml: cleanForPrint(bodyHtml) } : {};
+    if (emlToken) await call('eml.print', { token: emlToken, ...html });
+    else await call('message.print', { messageId, ...html });
   } catch {
     toastError("Couldn't print this message.", {
       actionLabel: 'Retry',
-      onAction: () => void printMessage(messageId, bodyHtml),
+      onAction: () => void printMessage(messageId, bodyHtml, emlToken),
     });
   } finally {
     if (preparing !== null) window.clearTimeout(preparing);
@@ -64,5 +68,5 @@ export function printOpenMessage(messageId: MessageId | undefined): void {
     toast('The message is still loading.');
     return;
   }
-  void printMessage(messageId, html);
+  void printMessage(messageId, html, source.emlToken);
 }

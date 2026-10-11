@@ -15,6 +15,16 @@ export function viewerHash(messageId: number): string {
   return `msg=${encodeURIComponent(String(messageId))}`;
 }
 
+/** Hash value of a message window for an opened .eml file: `#eml=<token>`. The path is never in the URL. */
+export function emlHash(token: string): string {
+  return `eml=${encodeURIComponent(token)}`;
+}
+
+/** Hash value of the small error window (app started by a file that could not be opened): `#emlerror=<code>`. */
+export function emlErrorHash(code: string): string {
+  return `emlerror=${encodeURIComponent(code)}`;
+}
+
 /** Reads a saved size; anything odd falls back to the default. */
 export function parseViewerSize(raw: string | null): ViewerSize {
   try {

@@ -20,3 +20,19 @@ export function safeFileStem(raw: string | null | undefined, fallback: string, m
 export function emlFileName(subject: string | null | undefined): string {
   return `${safeFileStem(subject, 'message', 100)}.eml`;
 }
+
+/** Make an attachment name safe to use as a Windows file name. */
+export function safeFileName(name: string | null | undefined, fallback = 'attachment'): string {
+  let n = replaceControlChars(name ?? '', '_')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim();
+  n = n.replace(/^\.+/, '').replace(/[. ]+$/, '');
+  if (!n) n = fallback;
+  if (RESERVED.test(n)) n = '_' + n;
+  if (n.length > 120) {
+    const dot = n.lastIndexOf('.');
+    const ext = dot > 0 && n.length - dot <= 12 ? n.slice(dot) : '';
+    n = n.slice(0, 120 - ext.length) + ext;
+  }
+  return n;
+}

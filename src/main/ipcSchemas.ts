@@ -5,6 +5,8 @@ import type { IpcChannel, IpcReq } from '../shared/ipc';
 
 const id = z.number().int().nonnegative();
 const accountId = z.string().min(1).max(100);
+/** The opaque id of a message opened from a .eml file (a UUID made by main). */
+const emlToken = z.string().regex(/^[A-Za-z0-9-]{8,80}$/);
 const str = (max = 2000) => z.string().max(max);
 const address = z.object({ name: str(500).optional(), address: str(500) });
 const endpoint = z.object({
@@ -263,6 +265,22 @@ export const schemas: Schemas = {
   'senders.allowImages': z.object({ address: str(320), allow: z.boolean() }),
   'senders.listAllowed': none,
   'message.openWindow': z.object({ messageId: id }),
+  'eml.pickFiles': none,
+  'eml.openPaths': z.object({ paths: z.array(str(32767).min(1)).min(1).max(100) }),
+  'eml.get': z.object({ token: emlToken }),
+  'eml.cidData': z.object({ token: emlToken, contentId: str(500) }),
+  'eml.rawSource': z.object({ token: emlToken }),
+  'eml.compose': z.object({ token: emlToken, mode: z.enum(['reply', 'replyAll', 'forward']) }),
+  'eml.saveAttachment': z.object({ token: emlToken, attachmentId: z.number().int().min(1).max(100000) }),
+  'eml.saveAllAttachments': z.object({ token: emlToken }),
+  'eml.showInFolder': z.object({ token: emlToken }),
+  'eml.print': z.object({
+    token: emlToken,
+    bodyHtml: z
+      .string()
+      .max(10 * 1024 * 1024)
+      .optional(),
+  }),
   'message.print': z.object({
     messageId: id,
     bodyHtml: z

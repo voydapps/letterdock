@@ -336,6 +336,62 @@ export class ComposeService implements DraftsApi {
     );
   }
 
+  /**
+   * Reply, Reply all or Forward of a message that is not in a mailbox (an opened .eml file, DESIGN-SPEC
+   * 3.14). Uses the default account (the first one that is turned on). The draft is saved at once with
+   * its body and attachment files, so `compose.prepare({ draftId })` can open it without the file.
+   */
+  async prepareFromParsed(
+    src: MessageBody,
+    mode: Exclude<ComposeMode, 'new'>,
+    files: { filename: string; contentType: string; data: Uint8Array }[],
+  ): Promise<{ draftId: string }> {
+    const list = this.ctx.accounts.list();
+    const account = list.find((a) => a.enabled) ?? list[0];
+    if (!account) throw new AppException('INVALID_INPUT', 'Add an account to reply.');
+    const draftId = randomUUID();
+    const html = initialHtml({ mode, signature: account.signature, source: src });
+    let attachments: DraftAttachment[] = [];
+    if (mode === 'forward') {
+      for (const f of files) {
+        try {
+          attachments.push(await this.attachData({ filename: f.filename, contentType: f.contentType, data: f.data }));
+        } catch (e) {
+          this.ctx.log.warn({ err: toAppError(e).code }, 'could not copy an attachment for forward');
+        }
+      }
+    } else {
+      attachments = [];
+    }
+    let fields: Pick<ComposeDraft, 'to' | 'cc' | 'bcc' | 'subject'>;
+    let inReplyTo: string | null = null;
+    let references: string | null = null;
+    if (mode === 'forward') {
+      fields = { to: [], cc: [], bcc: [], subject: forwardSubject(src.header.subject) };
+    } else {
+      const rcpt = replyRecipients(src, list.map((a) => a.email), mode === 'replyAll');
+      fields = { to: rcpt.to, cc: rcpt.cc, bcc: [], subject: replySubject(src.header.subject) };
+      inReplyTo = src.header.messageIdHeader;
+      references = replyReferences({ references: src.references, messageId: src.header.messageIdHeader });
+    }
+    const draft = this.createDraft(draftId, account, mode, { ...fields, html, attachments }, null, inReplyTo, references);
+    const row = this.repo.draft(draftId)!;
+    const content: SendReq = {
+      draftId,
+      accountId: account.id,
+      to: validOnly(draft.to),
+      cc: validOnly(draft.cc),
+      bcc: [],
+      subject: draft.subject,
+      html: draft.html,
+      attachmentTokens: attachments.map((a) => a.tokenId),
+    };
+    // Saved text, but no Drafts-folder row and no upload (server_dirty stays 0): the compose window
+    // reads it back once, and an untouched draft is discarded when that window closes.
+    this.repo.upsertDraft({ ...row, content_json: JSON.stringify(content) });
+    return { draftId };
+  }
+
   private createDraft(
     draftId: string,
     account: Account,

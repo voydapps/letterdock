@@ -91,10 +91,23 @@ for (const [w,h,scheme] of [[1440,900,'light'],[1440,900,'dark'],[1024,800,'ligh
   // click outside closes
   await sum.click(); await pg.waitForFunction(()=>document.querySelectorAll('details.tile[open]').length===1);
   await pg.mouse.click(5, 5);
-  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===0), `${w} ${scheme}: click outside closes`);
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length)===(w>=600?0:1), `${w} ${scheme}: click outside closes the overlay (phones keep the in-place tile open)`);
+  if (w<600) await sum.click();
   // another tile closes the first
   await sum.click(); await pg.locator('details.tile summary').nth(5).evaluate(e=>e.focus()); await pg.keyboard.press('Enter');
   ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===1), `${w} ${scheme}: one tile open at a time`);
+  await ctx.close();
+}
+// Deepest row: the panel hangs over the next section and paints above it.
+for (const scheme of ['light','dark']) {
+  const ctx = await b.newContext({viewport:{width:1440,height:900},colorScheme:scheme});
+  const pg = await ctx.newPage(); await pg.goto(base);
+  const sum = pg.locator('details.tile summary').nth(11); await sum.scrollIntoViewIfNeeded(); await sum.click();
+  await pg.waitForFunction(()=>document.querySelectorAll('details.tile[open]').length===1); await pg.waitForTimeout(300);
+  const g = await pg.evaluate(()=>{const m=document.querySelector('details.tile[open] .more').getBoundingClientRect();const f=document.getElementById('features').getBoundingClientRect();const el=document.elementFromPoint(m.left+m.width/2,m.bottom-6);return {over:m.bottom-f.bottom,top:!!(el&&el.closest('details.tile[open] .more'))}});
+  console.log('deep row', scheme, JSON.stringify(g));
+  ok(g.over>0 && g.top, `deep row ${scheme}: panel hangs over the next section and is on top`);
+  if (out) await pg.screenshot({path:`${out}/overlay-deep-${scheme}.png`});
   await ctx.close();
 }
 // no JS

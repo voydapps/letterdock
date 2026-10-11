@@ -124,14 +124,15 @@
     t.open = false;
     t.querySelector('summary').focus();
   });
-  d.addEventListener('pointerdown', function (e) {
+  d.addEventListener('click', function (e) {
+    // click, not pointerdown: a touch that starts a scroll must not close the tile
     var t = openTile();
-    if (!t || viewing() || t.contains(e.target) || e.target.closest('dialog')) return;
+    if (!t || !wide.matches || viewing() || t.contains(e.target) || e.target.closest('dialog')) return;
     t.open = false;
   });
   d.addEventListener('focusout', function (e) {
     var t = openTile(), n = e.relatedTarget;
-    if (!t || viewing() || !t.contains(e.target) || !n || t.contains(n) || n.closest('dialog')) return;
+    if (!t || !wide.matches || viewing() || !t.contains(e.target) || !n || t.contains(n) || n.closest('dialog')) return;
     t.open = false;
   });
 })();

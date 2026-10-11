@@ -1,0 +1,18 @@
+# Letterdock
+
+> Letterdock is a free, open-source (MIT) email client for Windows 10 and 11 (64-bit). It supports unlimited email accounts over IMAP and SMTP. Mail is stored on your PC. No subscription and no tracking.
+
+## Main pages
+- [Home, features and install steps](https://voydapps.github.io/letterdock/): what Letterdock does, how to install it, FAQ
+- [Changelog](https://voydapps.github.io/letterdock/changelog.html): what changed in each version
+
+## Download and source
+- [Download for Windows (installer)](https://github.com/voydapps/letterdock/releases/latest/download/Letterdock-Setup.exe)
+- [Source code and issues](https://github.com/voydapps/letterdock)
+- [All releases](https://github.com/voydapps/letterdock/releases)
+
+## Good to know
+- Works now: Gmail (with an app password), Yahoo, iCloud, and any IMAP/SMTP email.
+- Not yet: Outlook / Hotmail sign-in ("Sign in with Microsoft" is planned).
+- Windows only. No Mac, Linux or phone version.
+- The installer is not signed with a paid certificate yet, so Windows may show a warning.

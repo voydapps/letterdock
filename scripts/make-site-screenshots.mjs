@@ -375,7 +375,7 @@ async function makeOg() {
   return [out];
 }
 
-/** favicon.svg, favicon.ico (16, 32 from the small design, 48 from the master) and the 180 px touch icon. */
+/** favicon.svg, favicon.ico (16, 32 from the small design, 48 from the master), the 180 px touch icon and the web manifest icons (192, 512, maskable 512). */
 async function makeIcons() {
   const master = readFileSync(join(root, 'build', 'icon.svg'));
   const small = readFileSync(join(root, 'build', 'icon-small.svg'));
@@ -384,7 +384,16 @@ async function makeIcons() {
   writeFileSync(join(siteDir, 'favicon.ico'), await pngToIco([render(small, 16), render(small, 32), render(master, 48)]));
   const touch = await sharp(render(master, 180)).flatten({ background: '#0F6CBD' }).png().toBuffer();
   writeFileSync(join(siteDir, 'apple-touch-icon.png'), touch);
-  console.log('icons: favicon.svg, favicon.ico, apple-touch-icon.png');
+  writeFileSync(join(siteDir, 'icon-192.png'), render(master, 192));
+  writeFileSync(join(siteDir, 'icon-512.png'), render(master, 512));
+  // Maskable: the system may crop to a circle or squircle, so the logo sits inside the central 80% on a solid square.
+  const inner = await sharp(render(master, 410)).png().toBuffer();
+  const maskable = await sharp({ create: { width: 512, height: 512, channels: 3, background: '#202020' } })
+    .composite([{ input: inner, left: 51, top: 51 }])
+    .png()
+    .toBuffer();
+  writeFileSync(join(siteDir, 'icon-maskable-512.png'), maskable);
+  console.log('icons: favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png, icon-maskable-512.png');
 }
 
 main().catch((e) => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.7 - 2026-10-11
+### Fixed
+- Mark as unread now stays on the message you are reading. Before, it was marked read again after a moment.
+
 ## 0.6.6 - 2026-10-11
 ### New
 - Unread count on the taskbar: the Letterdock button now shows a red number with your unread mail, and the tray icon gets a red dot. You can turn each one off in Settings, Notifications.

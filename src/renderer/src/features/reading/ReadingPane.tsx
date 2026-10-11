@@ -219,13 +219,32 @@ export function MessageView({
   }, [header.id, attempt, epoch, file]);
 
   // Mark as read after the delay from Settings (-1 = never, 0 = right away).
+  // The timer starts once, when the message is opened (or has loaded). It does not start again when the seen flag
+  // changes, so "Mark as unread" on the open message stays. Opening a message anew remounts this view (keyed).
   const seen = header.seen;
   const ready = state.status === 'ready';
+  const seenRef = useRef(seen);
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (seen || !ready || markDelay < 0) return;
-    const h = setTimeout(() => void applyToMessages([header.id], { type: 'markRead', read: true }), markDelay);
-    return () => clearTimeout(h);
-  }, [seen, ready, markDelay, header.id]);
+    seenRef.current = seen;
+    // The user (or another window) changed the flag while the timer was waiting: drop the timer.
+    if (autoTimer.current !== null) {
+      clearTimeout(autoTimer.current);
+      autoTimer.current = null;
+    }
+  }, [seen]);
+  useEffect(() => {
+    if (!ready || markDelay < 0 || seenRef.current) return;
+    const h = setTimeout(() => {
+      autoTimer.current = null;
+      void applyToMessages([header.id], { type: 'markRead', read: true });
+    }, markDelay);
+    autoTimer.current = h;
+    return () => {
+      clearTimeout(h);
+      autoTimer.current = null;
+    };
+  }, [ready, markDelay, header.id]);
 
   const body = state.status === 'ready' ? state.body : null;
   // Images load by themselves for senders the user allowed, when Settings says so.

@@ -547,14 +547,30 @@ function Card({
   const markDelay = useApp((s) => s.settings?.markReadDelayMs ?? 1500);
   const [seenLocal, setSeenLocal] = useState(h.seen);
   const isUnread = unread && !seenLocal;
+  // Keep the on-screen flag in step when the message changes elsewhere (Ctrl+U, a menu, another window).
+  const [seenProp, setSeenProp] = useState(h.seen);
+  if (seenProp !== h.seen) {
+    setSeenProp(h.seen);
+    setSeenLocal(h.seen);
+  }
+  const unreadRef = useRef(unread);
+  const autoTimer = useRef<{ cancel: () => void } | null>(null);
+  useEffect(() => {
+    unreadRef.current = unread;
+    // The flag changed while the timer was waiting: drop it. It is not started again until the card is opened anew.
+    autoTimer.current?.cancel();
+  }, [unread]);
 
   // Mark as read once the open card is at least half visible (Settings > Mail > Mark a message as read).
+  // This starts when the card opens, not when the unread flag changes, so "Mark as unread" stays.
   useEffect(() => {
-    if (!open || !unread || seenLocal || markDelay < 0 || m.isDraft) return;
+    if (!open || markDelay < 0 || m.isDraft || !unreadRef.current) return;
     const el = ref.current;
     if (!el) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
     const mark = () => {
+      timer = null;
       void applyToRealMessages([h.id], { type: 'markRead', read: true }).then((ok) => {
         if (ok) {
           setSeenLocal(true);
@@ -562,8 +578,17 @@ function Card({
         }
       });
     };
+    const handle = {
+      cancel: () => {
+        stopped = true;
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        io.disconnect();
+      },
+    };
     const io = new IntersectionObserver(
       (entries) => {
+        if (stopped) return;
         const visible = entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.5);
         if (visible && timer === null) timer = setTimeout(mark, markDelay);
         if (!visible && timer !== null) {
@@ -573,12 +598,13 @@ function Card({
       },
       { root: scroller.current, threshold: [0, 0.5, 1] },
     );
+    autoTimer.current = handle;
     io.observe(el);
     return () => {
-      io.disconnect();
-      if (timer !== null) clearTimeout(timer);
+      handle.cancel();
+      if (autoTimer.current === handle) autoTimer.current = null;
     };
-  }, [open, unread, seenLocal, markDelay, m.isDraft, h.id, threadId, scroller]);
+  }, [open, markDelay, m.isDraft, h.id, threadId, scroller]);
 
   const label = `Message from ${name}, ${cardDate(h.date)}, ${m.isDraft ? 'draft, ' : ''}${open ? 'expanded' : 'collapsed'}${isUnread ? ', unread' : ''}`;
   const activate = () => (m.isDraft ? editDraft(h.id) : onToggle());

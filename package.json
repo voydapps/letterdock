@@ -29,7 +29,8 @@
     "perf": "node scripts/perf-baseline.mjs",
     "postinstall": "node node_modules/electron/install.js && electron-builder install-app-deps",
     "icons": "node scripts/build-icons.mjs",
-    "site:screenshots": "node scripts/make-site-screenshots.mjs"
+    "site:screenshots": "node scripts/make-site-screenshots.mjs",
+    "site:changelog": "node scripts/make-changelog-page.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

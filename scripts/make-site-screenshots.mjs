@@ -4,7 +4,7 @@
 //
 // What it does
 //   1. Starts the Vite dev server for the renderer (the fake backend only exists in dev mode).
-//   2. Opens Chromium (Playwright) on  /?fake=1&scenario=demo , the invented demo data in
+//   2. Opens Chromium (Playwright) on  /?fake=1&scenario=demo  (a few pictures use scenario=light), the invented demo data in
 //      src/renderer/src/dev/demoData.ts (made-up people and brands, example.com/.org/.net only).
 //   3. For each entry in SHOTS: sets the window size, light or dark theme and a fixed clock
 //      (Tuesday 10:24), puts the app in the wanted state, and takes a picture at 2x.
@@ -39,7 +39,9 @@ const only = onlyArg ? (onlyArg.includes('=') ? onlyArg.split('=')[1] : args[arg
 
 // Tuesday 13 October 2026, 10:24 (UTC; the browser also runs in UTC).
 const FIXED_TIME = new Date('2026-10-13T10:24:00Z');
-const DEMO = 'fake=1&scenario=demo';
+// Every picture uses the invented demo data unless it asks for another scenario (`scenario: 'light'` = the light
+// features of DESIGN-SPEC 3.13 on the everyday dev data, see fakeApi.ts).
+const scenarioQuery = (name = 'demo') => `fake=1&scenario=${name}`;
 
 // ---------- small helpers ----------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -96,7 +98,7 @@ async function decorate(page) {
 
 // ---------- the pictures ----------
 // Each entry: name, size [w,h], theme, url (default main window), state(page) to reach the wanted view, and
-// optional `ui` (extra persisted UI state), `frame` (false: not an app window) or `crop` ({x,y,w,h} in CSS px).
+// optional `scenario` (fake backend data set, default 'demo'), `ui` (extra persisted UI state), `frame` (false: not an app window) or `crop` ({x,y,w,h} in CSS px).
 const SHOTS = [];
 const shot = (s) => SHOTS.push(s);
 
@@ -195,6 +197,63 @@ shot({
   },
 });
 
+/** The light scenario's test mail has dev labels ("Fixture: ..."). Pictures show normal names and subjects instead. */
+const FIXTURE_TEXT = {
+  'Fixture Sender': 'Hollow Books',
+  'fixture@example.com': 'hello@hollowbooks.example',
+  'Fixture: plain text "Test"': 'Your order is on its way',
+  'Fixture: Gmail simple compose': 'Lunch on Friday?',
+  'Fixture: designed newsletter (white body, brand header)': 'Autumn issue: five things we liked',
+  'Fixture: designed newsletter': 'Autumn issue: five things we liked',
+  'Fixture: gradient / background-image newsletter': 'Weekend deals',
+  'Fixture: Trackers and a real picture': 'Photos from the trip',
+  'Fixture: Four trackers, no pictures': 'Sale ends tonight',
+  'Fixture: One hidden pixel': 'Your receipt',
+  'Fixture: Newsletter, one-click (verified)': 'Your Thursday digest',
+  'Fixture: Newsletter, one-click fails (fails)': 'Monthly offers',
+  'Fixture: Newsletter by email only (unknown sender)': 'Shop news',
+  'Fixture: Newsletter, web page only': 'This week at the library',
+  'Fixture: Newsletter with a failed sender check': 'You won a prize',
+  'Fixture: Newsletter you left before': 'Old news',
+};
+const cleanFixtures = (page) =>
+  page.evaluate((map) => {
+    const keys = Object.keys(map).sort((x, y) => y.length - x.length);
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      let t = n.nodeValue;
+      for (const k of keys) t = t.split(k).join(map[k]);
+      t = t.replace(/Fixture: /g, '');
+      if (t !== n.nodeValue) n.nodeValue = t;
+    }
+  }, FIXTURE_TEXT);
+// 0.6.0 pictures (DESIGN-SPEC 3.13). They use the "light" scenario of the fake backend.
+// The Snooze menu, opened with the alarm-clock button of the reading toolbar. That button needs a reading pane of
+// 700 px or more (light.css), so this picture is wider and has the sidebar collapsed.
+shot({ name: 'snooze', size: [1100, 700], theme: 'light', scenario: 'light', ui: { sidebarCollapsed: true, listW: 300 }, state: async (page) => {
+  await openMessage(page, 'designed newsletter', 1800);
+  await page.locator('button.snooze-btn').click();
+  await sleep(600);
+  await cleanFixtures(page);
+  await page.mouse.move(5, 5);
+} });
+// A newsletter from a verified sender: the Unsubscribe button is in the header.
+shot({ name: 'unsubscribe', size: [1000, 700], theme: 'light', scenario: 'light', state: async (page) => {
+  await openMessage(page, 'Newsletter, one-click (verified)', 1800);
+  await cleanFixtures(page);
+} });
+// The compose window with the Quick replies menu open (3 fictional replies from the light scenario).
+shot({
+  name: 'quick-replies', size: [900, 650], theme: 'light', scenario: 'light', ready: '[contenteditable="true"]',
+  url: '/compose.html',
+  hash: '#req=' + encodeURIComponent(JSON.stringify({ mode: 'new', accountId: 'a1', mailto: 'mailto:priya@example.com?subject=Slides%20for%20Thursday' })),
+  state: async (page) => {
+    await sleep(800);
+    await page.getByRole('button', { name: /Quick replies/ }).first().click();
+    await sleep(500);
+  },
+});
+
 // ---------- run ----------
 /** Opens one fresh browser context, reaches the state of `s` and returns the 2x PNG (transparent corners). */
 async function capture(browser, base, s) {
@@ -217,7 +276,7 @@ async function capture(browser, base, s) {
   page.on('pageerror', (e) => console.warn(`  [${s.name}] page error: ${e.message}`));
   const url = s.url ?? '/';
   await page.clock.setFixedTime(FIXED_TIME);
-  await page.goto(`${base}${url}${url.includes('?') ? '&' : '?'}${DEMO}${s.hash ?? ''}`);
+  await page.goto(`${base}${url}${url.includes('?') ? '&' : '?'}${scenarioQuery(s.scenario)}${s.hash ?? ''}`);
   await page.waitForSelector(s.ready ?? '.panes', { timeout: 20000 });
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await sleep(500);

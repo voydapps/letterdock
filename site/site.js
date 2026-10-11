@@ -45,9 +45,10 @@
   d.body.appendChild(dlg);
   var img = dlg.querySelector('img'), cap = dlg.querySelector('figcaption'), cnt = dlg.querySelector('.v-count');
   function info(a) {
-    var t = a.querySelector('img'), card = a.closest('.card'), h = card && card.querySelector('h3');
-    // Full-resolution twin of the thumbnail that is showing now (theme/size aware), else the link target as WebP.
-    var s = t.currentSrc ? t.currentSrc.replace('/screenshots/', '/screenshots/full/') : a.getAttribute('href').replace(/\.png$/, '.webp');
+    var t = a.querySelector('img'), card = a.closest('.tile, .card'), h = card && card.querySelector('strong, h3');
+    // Full-resolution twin of the thumbnail that is showing now (theme/size aware). A lazy picture inside a closed
+    // tile has not loaded and has no currentSrc: use the link target (the full-size PNG) then.
+    var s = t.currentSrc ? t.currentSrc.replace('/screenshots/', '/screenshots/full/') : a.getAttribute('href');
     return { src: s, alt: t.alt, cap: h ? h.textContent : t.alt };
   }
   function show(i) {

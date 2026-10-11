@@ -32,6 +32,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showTrackerNotice: true,
   notifyActions: true,
   notifySnoozeReturn: true,
+  badgeTaskbar: true,
+  badgeTray: true,
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;

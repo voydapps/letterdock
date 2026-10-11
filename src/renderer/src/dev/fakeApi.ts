@@ -345,6 +345,8 @@ const settings: AppSettings = {
   showTrackerNotice: true,
   notifyActions: true,
   notifySnoozeReturn: true,
+  badgeTaskbar: true,
+  badgeTray: true,
   ...(demo?.settings ?? {}),
 };
 

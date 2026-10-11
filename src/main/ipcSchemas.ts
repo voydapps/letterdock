@@ -135,6 +135,8 @@ const settingsPatch = z
     showTrackerNotice: z.boolean(),
     notifyActions: z.boolean(),
     notifySnoozeReturn: z.boolean(),
+    badgeTaskbar: z.boolean(),
+    badgeTray: z.boolean(),
   })
   .partial();
 

@@ -1169,6 +1169,10 @@ export interface AppSettings {
   notifyActions: boolean;
   /** Notify when snoozed mail comes back (3.13.2). */
   notifySnoozeReturn: boolean;
+  /** Red unread number on the taskbar button (3.15). Default true. */
+  badgeTaskbar: boolean;
+  /** Red dot on the tray icon when there is unread mail (3.15). Default true. */
+  badgeTray: boolean;
 }
 
 // ---------- app updates (section 0, item 7; GitHub Releases via electron-updater) ----------

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.6 - 2026-10-11
+### New
+- Unread count on the taskbar: the Letterdock button now shows a red number with your unread mail, and the tray icon gets a red dot. You can turn each one off in Settings, Notifications.
+
 ## 0.6.5 - 2026-10-11
 ### Fixed
 - Mail that comes back from snooze now sits in one "Back from snooze" group at the top of your list. Before, it could split the "Today" group in two, so hiding "Today" hid only part of it. This also works with conversations and in the Unread view.

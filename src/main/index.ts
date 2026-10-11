@@ -6,6 +6,7 @@ import {
   dialog,
   nativeTheme,
   net,
+  nativeImage,
   Notification,
   powerMonitor,
   protocol,
@@ -29,6 +30,7 @@ import {
   shouldStartHidden,
 } from './background';
 import { AppTray } from './tray';
+import { UnreadBadge, buildBadgeImage } from './unreadBadge';
 import { QUIT_BUTTONS, QuitState, quitPromptText, shouldAskBeforeQuit } from './quitGuard';
 import { relayUndoToMain } from './undoRelay';
 import { APP_NAME, readEnv, resolveAppUserModelId } from './buildConfig';
@@ -124,6 +126,21 @@ async function boot(): Promise<void> {
 
   // ---- tray icon (always there; close-to-tray and start-hidden depend on it) ----
   const tray = new AppTray();
+  // Red number on the taskbar button and red dot on the tray icon (3.15).
+  const badge = new UnreadBadge(
+    {
+      getWindow: () => mainWindow,
+      setTrayDot: (on) => tray.setDot(on),
+      makeImage: (text) => buildBadgeImage({ fromBitmap: (b, o) => nativeImage.createFromBitmap(b, o) }, text),
+    },
+    { badgeTaskbar: settings.get().badgeTaskbar, badgeTray: settings.get().badgeTray },
+  );
+  /** Counts are only pushed when they change, so read them once at start and after an engine restart. */
+  const readBadgeCounts = () =>
+    void engine
+      .request<{ unifiedInboxUnread: number }>('folders.counts')
+      .then((c) => badge.setCountNow(c.unifiedInboxUnread))
+      .catch(() => undefined);
   /** Set when the app is really quitting, so closing the main window then does not hide it. */
   let isQuitting = false;
   /** Set once drafts are saved and the engine is stopped; then before-quit lets the app exit. */
@@ -257,8 +274,13 @@ async function boot(): Promise<void> {
     else if (e.type === 'snooze:returned') notifier.snoozeReturned(e.accountId, e.messages);
     else if (e.type === 'account:authRequired') void notifier.authRequired(e.accountId);
     else if (e.type === 'accounts:changed') accountNames.clear();
-    else if (e.type === 'counts:changed') tray.setUnread(e.unifiedInboxUnread);
-    else if (e.type === 'engine:restarted') emlRef?.forgetAll();
+    else if (e.type === 'counts:changed') {
+      tray.setUnread(e.unifiedInboxUnread);
+      badge.onCounts(e.unifiedInboxUnread);
+    } else if (e.type === 'engine:restarted') {
+      emlRef?.forgetAll();
+      readBadgeCounts();
+    }
   };
 
   // ---- Sign in with Microsoft ----
@@ -375,6 +397,7 @@ async function boot(): Promise<void> {
       isQuitting = true;
       quit.confirm(); // the installer restarts Letterdock, so scheduled mail is not lost
       await waitForPendingSaves(3000);
+      badge.dispose();
       tray.destroy();
       engine.stop();
       quitReady = true;
@@ -445,6 +468,7 @@ async function boot(): Promise<void> {
     });
     mainWindow = w;
     appWindows.add(w);
+    badge.attachWindow(w);
     w.on('close', (e) => {
       if (mainCloseAction(settings.get(), isQuitting, tray.available) === 'hide') {
         e.preventDefault();
@@ -492,6 +516,9 @@ async function boot(): Promise<void> {
     ) {
       applyLoginItem();
     }
+    if (patch === null || patch.badgeTaskbar !== undefined || patch.badgeTray !== undefined) {
+      badge.settingsChanged(next);
+    }
     send({ type: 'settings:changed', settings: next, oauth: settings.getOAuth() });
   }
 
@@ -507,6 +534,7 @@ async function boot(): Promise<void> {
   applyLoginItem();
 
   ensureMainWindow(shouldStartHidden(process.argv.slice(1), settings.get(), trayOk));
+  readBadgeCounts();
 
   // mailto: links and .eml files. A second launch (the user clicked a link or opened a file while we
   // run) arrives as an argument.
@@ -591,6 +619,7 @@ async function boot(): Promise<void> {
       e.preventDefault();
       quitReady = true;
       void waitForPendingSaves(3000).finally(() => {
+        badge.dispose();
         tray.destroy();
         engine.stop();
         app.quit();

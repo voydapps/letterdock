@@ -1,4 +1,6 @@
 // Path rules, size cap and .msg detection for .eml files (DESIGN-SPEC 3.14.4 / 3.14.5): emlFile.ts
+import { execSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -124,7 +126,8 @@ describe('readEmlBytes (fake file system)', () => {
 describe('real files', () => {
   let dir = '';
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'letterdock-eml-'));
+    // The temp folder may be an 8.3 short path (RUNNER~1): use its canonical form, like the code does.
+    dir = realpathSync.native(await mkdtemp(join(tmpdir(), 'letterdock-eml-')));
   });
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -155,7 +158,24 @@ describe('real files', () => {
     }
     const r = await resolveEmlPath(link);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.file.realPath.toLowerCase()).toBe(target.toLowerCase());
+    if (r.ok) expect(r.file.realPath.toLowerCase()).toBe(realpathSync.native(target).toLowerCase());
+  });
+
+  it('treats the 8.3 short and long forms of one file as the same file (same key)', async () => {
+    if (process.platform !== 'win32') return;
+    const f = join(dir, 'a-rather-long-file-name.eml');
+    await writeFile(f, 'Subject: s\r\n\r\nx');
+    let short: string;
+    try {
+      short = execSync(`for %I in ("${f}") do @echo %~sI`, { encoding: 'utf8' }).trim();
+    } catch {
+      return;
+    }
+    if (!short || short.toLowerCase() === f.toLowerCase()) return; // 8.3 names are off on this volume
+    const a = await resolveEmlPath(f);
+    const b = await resolveEmlPath(short);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(b.file.key).toBe(a.file.key);
   });
 });
 

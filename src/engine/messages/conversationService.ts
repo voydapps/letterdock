@@ -22,6 +22,7 @@ import type {
   ListScope,
   MessageId,
 } from '../../shared/ipc';
+import type { Statement } from 'better-sqlite3';
 import { AppException } from '../../shared/errors';
 import type { EngineContext } from '../context';
 import { rowToHeader, scopeFilter, type MessageRow } from '../db/repos/messageRepo';
@@ -130,18 +131,24 @@ export class ConversationService {
     // Pinned conversations (DESIGN-SPEC 3.13.6): one tiny indexed query; the paged query leaves them
     // out only while there are any, so it is unchanged for everyone who never pins.
     const pinnedKeys = this.pinnedThreads(r, unreadOnly);
+    // Conversations that have mail back from snooze come right after the pinned ones, newest return
+    // first (DESIGN-SPEC 3.13.2), in the Date sort newest first. Like pinned ones they are served by
+    // their own small indexed query and left out of the paged query.
+    const returnedGroups =
+      sort === 'date' && !asc ? this.returnedThreads(r, pinnedKeys) : [];
+    const skipKeys = [...pinnedKeys, ...returnedGroups];
     let pinExclude = '';
-    pinnedKeys.forEach((k, i) => {
+    skipKeys.forEach((k, i) => {
       params[`pa${i}`] = k.a;
       params[`pt${i}`] = k.t;
     });
-    if (pinnedKeys.length > 0) {
-      pinExclude = ` AND (m.account_id, m.thread_id) NOT IN (VALUES ${pinnedKeys.map((_, i) => `(:pa${i}, :pt${i})`).join(',')})`;
+    if (skipKeys.length > 0) {
+      pinExclude = ` AND (m.account_id, m.thread_id) NOT IN (VALUES ${skipKeys.map((_, i) => `(:pa${i}, :pt${i})`).join(',')})`;
     }
     let groups: { a: string; t: string; ld: number; mx: number; k?: string }[];
     if (sort === 'date') {
       groups =
-        (!asc ? this.walkNewest(r, limit, req.cursor, pinnedKeys) : null) ??
+        (!asc ? this.walkNewest(r, limit, req.cursor, skipKeys) : null) ??
         this.dateGroups(r, params, asc, req.cursor, pinExclude);
     } else {
       // The key comes from the LATEST message of the conversation (rn = 1): the sender as shown
@@ -185,7 +192,10 @@ export class ConversationService {
     const more = groups.length > limit;
     const page = more ? groups.slice(0, limit) : groups;
     const own = this.ownAddresses();
-    const items = page.map((g) => this.buildRow(r, unreadOnly, g.a, g.t, own));
+    const returnedRows = req.cursor
+      ? []
+      : returnedGroups.map((g) => this.buildRow(r, unreadOnly, g.a, g.t, own));
+    const items = [...returnedRows, ...page.map((g) => this.buildRow(r, unreadOnly, g.a, g.t, own))];
     const last = page[page.length - 1];
 
     const total = req.cursor ? null : this.totalThreads(r);
@@ -236,6 +246,44 @@ export class ConversationService {
       )
       .all(r.params) as { a: string; t: string }[];
   }
+
+  /**
+   * Conversations of this view with a message that came back from snooze (newest return first, at
+   * most 100; pinned ones are left out, they have their own group). One small query on the
+   * partial index idx_msg_returned, then one lookup per conversation for its sort time.
+   */
+  private returnedThreads(
+    r: Resolved,
+    pinned: { a: string; t: string }[],
+  ): { a: string; t: string; ld: number; mx: number }[] {
+    const db = this.ctx.db;
+    const stmt = (this.stmtReturned ??= db.prepare('SELECT 1 FROM message WHERE snooze_returned_at IS NOT NULL LIMIT 1'));
+    if (stmt.get() === undefined) return [];
+    const skip = new Set(pinned.map((k) => `${k.a} ${k.t}`));
+    const boosted = db
+      .prepare(
+        `SELECT DISTINCT m.account_id AS a, m.thread_id AS t
+           FROM message m INDEXED BY idx_msg_returned JOIN folder f ON f.id = m.folder_id
+          WHERE m.snooze_returned_at IS NOT NULL AND m.thread_id IS NOT NULL AND ${r.inclusion}`,
+      )
+      .all(r.params) as { a: string; t: string }[];
+    const agg = db.prepare(
+      `SELECT MAX(MAX(m.date_ms, COALESCE(m.snooze_returned_at, 0))) AS ld, MAX(m.id) AS mx,
+              MAX(CASE WHEN ${r.memberWhere} THEN 1 ELSE 0 END) AS mem
+         FROM message m JOIN folder f ON f.id = m.folder_id
+        WHERE m.account_id = :tAcc AND m.thread_id = :tThr AND ${r.inclusion}`,
+    );
+    const out: { a: string; t: string; ld: number; mx: number }[] = [];
+    for (const b of boosted) {
+      if (skip.has(`${b.a} ${b.t}`)) continue;
+      const g = agg.get({ ...r.params, tAcc: b.a, tThr: b.t }) as { ld: number; mx: number; mem: number };
+      if (g.mem) out.push({ a: b.a, t: b.t, ld: g.ld, mx: g.mx });
+    }
+    out.sort((x, y) => y.ld - x.ld || y.mx - x.mx);
+    return out.slice(0, 100);
+  }
+
+  private stmtReturned?: Statement;
 
   /** Counting every conversation of a big view takes tens of ms: remember it until anything is written. */
   private totalCache = new Map<string, { changes: number; n: number }>();

@@ -1136,8 +1136,13 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
         .filter((m) => !r!.unreadOnly || !m.seen)
         .sort((a, b) => {
           if (sort === 'date') {
-            // Mail that came back from snooze counts as new: it is dated by its return time (DESIGN-SPEC 3.13.2).
-            const d = Math.max(a.date, a.snoozeReturnedAt ?? 0) - Math.max(b.date, b.snoozeReturnedAt ?? 0) || a.id - b.id;
+            // Newest first puts mail that came back from snooze first, newest return first (DESIGN-SPEC 3.13.2).
+            if (dir === 'desc' && (a.snoozeReturnedAt || b.snoozeReturnedAt)) {
+              if (!a.snoozeReturnedAt) return 1;
+              if (!b.snoozeReturnedAt) return -1;
+              return b.snoozeReturnedAt - a.snoozeReturnedAt || b.id - a.id;
+            }
+            const d = a.date - b.date || a.id - b.id;
             return dir === 'asc' ? d : -d;
           }
           const ka = keyOf(a);
@@ -1171,6 +1176,11 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       // Same order as the engine: by key (A to Z unless 'desc'), equal keys newest first.
       rows.sort((a, b) => {
         if (sort === 'date') {
+          if (dir === 'desc' && (a.snoozeReturnedAt || b.snoozeReturnedAt)) {
+            if (!a.snoozeReturnedAt) return 1;
+            if (!b.snoozeReturnedAt) return -1;
+            return b.snoozeReturnedAt - a.snoozeReturnedAt || b.latest.id - a.latest.id;
+          }
           const d = a.latest.date - b.latest.date || a.latest.id - b.latest.id;
           return dir === 'asc' ? d : -d;
         }

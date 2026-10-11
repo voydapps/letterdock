@@ -31,7 +31,7 @@ import { call } from '../../lib/api';
 import { LIST_MOVE_EVENT } from '../../lib/shortcuts';
 import { endDrag, startDrag } from '../../lib/dnd';
 import { snoozeGroup } from '../../lib/snooze';
-import { dateGroupOf, groupRuns } from '../../lib/listGroups';
+import { dateRuns, groupRuns } from '../../lib/listGroups';
 import { inText, rowWhenText, whenText } from '../../lib/schedule';
 import { allMuted, allPinned, canMute, canSnoozeRole, openSnoozeMenu, setMuted, setPinned, snoozeMenuEntries, unsnoozeMessages } from '../../lib/light';
 import { canPinHere } from '../../lib/pinRules';
@@ -104,6 +104,7 @@ export function MessageList({ className }: { className?: string }) {
   const focusId = useList((s) => s.focusId);
   const selectMode = useList((s) => s.selectMode);
   const search = useList((s) => s.search);
+  const groupedRows = useList((s) => s.grouped);
   const searchSort = useList((s) => s.searchSort);
   const terms = useMemo(() => (search ? searchTerms(search.query) : []), [search]);
   const accountMap = useAccountMap();
@@ -151,9 +152,12 @@ export function MessageList({ className }: { className?: string }) {
       rest.forEach((m, i) => out.push({ type: 'row', key: `m:${m.id}`, msg: m, index: pc + i, label: '' }));
       return out;
     }
-    // Runs of neighbouring rows, not one bucket per label: mail back from snooze sits at the top with its own
-    // header, and the rows below keep their normal date groups (a label can show up again after it).
-    const runs = groupRuns(rest, (m) => (snoozedView ? snoozeGroup(m.snoozedUntil ?? now, now) : dateGroupOf(m, now)));
+    // Runs of neighbouring rows in engine order. The engine puts mail back from snooze before the rest
+    // (Date sort, newest first), so it forms one "Back from snooze" group at the top and every date label
+    // below it appears once (the collapsed state is kept per label).
+    const runs = snoozedView
+      ? groupRuns(rest, (m) => snoozeGroup(m.snoozedUntil ?? now, now))
+      : dateRuns(rest, now, { floated: !search && listSort.direction === 'desc', conversations: groupedRows });
     const used = new Map<string, number>();
     let index = pc;
     for (const { label, items: list } of runs) {
@@ -167,7 +171,7 @@ export function MessageList({ className }: { className?: string }) {
       }
     }
     return out;
-  }, [items, pinnedCount, view.kind, collapsed, search, searchSort, listSort.sort]);
+  }, [items, pinnedCount, view.kind, collapsed, search, searchSort, listSort.sort, listSort.direction, groupedRows]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line react-hooks/incompatible-library

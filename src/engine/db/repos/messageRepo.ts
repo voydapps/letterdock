@@ -670,9 +670,11 @@ export class MessageRepo {
 
   /**
    * DESIGN-SPEC 3.13.6 / 3.13.2. Folder and Inbox views (no unread filter) show pinned messages
-   * first (any sort) and, in date order newest first, mail that came back from snooze before the
-   * rest. Both sets are tiny (pins max 10 per folder; returned ones are cleared when read).
-   * Returns the extra WHERE for the paged query and the rows for page 1.
+   * first (any sort). In date order newest first, every view puts mail that came back from snooze
+   * before the rest (after the pinned ones), newest return first, so the list shows it as one group
+   * at the top and the date groups below it each appear once. Both sets are tiny (pins max 10 per
+   * folder; returned ones are cleared when read). Returns the extra WHERE for the paged query and
+   * the rows for page 1.
    */
   private topSets(
     req: ListMessagesReq,
@@ -682,22 +684,23 @@ export class MessageRepo {
     order: string,
     keyExpr: string,
   ): { extraWhere: string; pinned: MessageRow[]; returned: MessageRow[] } {
-    const none = { extraWhere: '', pinned: [] as MessageRow[], returned: [] as MessageRow[] };
-    const k = req.scope.kind;
-    if (req.unreadOnly || (k !== 'folder' && k !== 'accountInbox' && k !== 'unifiedInbox')) return none;
     let extraWhere = '';
     let pinned: MessageRow[] = [];
     let returned: MessageRow[] = [];
-    this.stmtAnyPinned ??= this.db.prepare('SELECT 1 FROM message WHERE pinned_at IS NOT NULL LIMIT 1');
-    if (this.stmtAnyPinned.get() !== undefined) {
-      extraWhere += ' AND m.pinned_at IS NULL';
-      if (!req.cursor) {
-        pinned = this.db
-          .prepare(
-            `SELECT m.*, ${keyExpr} AS sort_key ${f.from} WHERE ${f.where} AND m.pinned_at IS NOT NULL
-             ORDER BY ${order} LIMIT 200`,
-          )
-          .all(f.params) as MessageRow[];
+    const k = req.scope.kind;
+    const pinsApply = !req.unreadOnly && (k === 'folder' || k === 'accountInbox' || k === 'unifiedInbox');
+    if (pinsApply) {
+      this.stmtAnyPinned ??= this.db.prepare('SELECT 1 FROM message WHERE pinned_at IS NOT NULL LIMIT 1');
+      if (this.stmtAnyPinned.get() !== undefined) {
+        extraWhere += ' AND m.pinned_at IS NULL';
+        if (!req.cursor) {
+          pinned = this.db
+            .prepare(
+              `SELECT m.*, ${keyExpr} AS sort_key ${f.from} WHERE ${f.where} AND m.pinned_at IS NOT NULL
+               ORDER BY ${order} LIMIT 200`,
+            )
+            .all(f.params) as MessageRow[];
+        }
       }
     }
     if (sort === 'date' && !asc) {
@@ -705,14 +708,19 @@ export class MessageRepo {
         'SELECT 1 FROM message WHERE snooze_returned_at IS NOT NULL LIMIT 1',
       );
       if (this.stmtAnyReturned.get() !== undefined) {
-        extraWhere += ' AND (m.snooze_returned_at IS NULL OR m.pinned_at IS NOT NULL)';
-        if (!req.cursor) {
-          returned = this.db
-            .prepare(
-              `SELECT m.* ${f.from} WHERE ${f.where} AND m.snooze_returned_at IS NOT NULL AND m.pinned_at IS NULL
-               ORDER BY m.snooze_returned_at DESC, m.id DESC LIMIT 100`,
-            )
-            .all(f.params) as MessageRow[];
+        // A pinned message stays in the Pinned group, so only the views that have that group leave it out here.
+        const notPinned = pinsApply ? ' AND m.pinned_at IS NULL' : '';
+        const rows = this.db
+          .prepare(
+            `SELECT m.* ${f.from} WHERE ${f.where} AND m.snooze_returned_at IS NOT NULL${notPinned}
+             ORDER BY m.snooze_returned_at DESC, m.id DESC LIMIT 100`,
+          )
+          .all(f.params) as MessageRow[];
+        if (rows.length > 0) {
+          // Exactly the rows listed on page 1 stay out of the paged query (a view with more than
+          // 100 returned messages shows the rest in their date place).
+          extraWhere += ` AND m.id NOT IN (${rows.map((r) => r.id).join(',')})`;
+          if (!req.cursor) returned = rows;
         }
       }
     }

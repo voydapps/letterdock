@@ -300,6 +300,50 @@ describe('snooze', () => {
     expect(convs.items[1]!.snoozeReturnedAt).toBeUndefined();
   });
 
+  /** Lunch comes back first, Invoice later: Invoice is the newest return. */
+  async function returnTwo(c: Booted) {
+    await call(c.h, 'snooze.set', { messageIds: [idOf(c, 'Lunch')], until: clock.now() + HOUR });
+    await call(c.h, 'snooze.set', { messageIds: [idOf(c, 'Invoice')], until: clock.now() + 2 * HOUR });
+    clock.offset = 90 * 60_000;
+    await c.light.snooze.recheck();
+    clock.offset = 3 * HOUR;
+    await c.light.snooze.recheck();
+  }
+
+  it('conversations: all returned conversations come first (newest return first), once, on page 1 only', async () => {
+    const c = await boot();
+    await returnTwo(c);
+    const list = (over: object = {}) =>
+      call<ListConversationsRes>(c.h, 'conversations.list', { scope: inboxScope(c), cursor: null, limit: 1, ...over });
+    const p1 = await list();
+    // Newer than Weekly news and the Plan conversation by date, yet one block at the top, not mixed in by time.
+    expect(p1.items.map((x) => x.latest.title)).toEqual(['Invoice', 'Lunch', 'Weekly news']);
+    expect(p1.items.map((x) => !!x.snoozeReturnedAt)).toEqual([true, true, false]);
+    const p2 = await list({ cursor: p1.nextCursor });
+    expect(p2.items.map((x) => x.latest.title)).toEqual(['Plan']);
+    expect(p2.items.some((x) => x.snoozeReturnedAt)).toBe(false);
+    // oldest first: normal place by the time they came back
+    const asc = await list({ direction: 'asc', limit: 50 });
+    expect(asc.items[asc.items.length - 1]!.latest.title).toBe('Invoice');
+    // pinned stays ahead of returned
+    const lunchTid = rowOf(c, 'Lunch').thread_id!;
+    await call(c.h, 'pin.set', { threadIds: [lunchTid], scope: inboxScope(c), pinned: true });
+    const pinned = await list({ limit: 50 });
+    expect(pinned.pinned?.map((x) => x.latest.title)).toEqual(['Lunch']);
+    expect(pinned.items.map((x) => x.latest.title)).toEqual(['Invoice', 'Weekly news', 'Plan']);
+  });
+
+  it('messages: returned mail comes first in the Unread filter too, and not again on page 2', async () => {
+    const c = await boot();
+    await returnTwo(c);
+    const p1 = await listInbox(c, { unreadOnly: true, limit: 1 });
+    expect(subjects(p1).slice(0, 2)).toEqual(['Invoice', 'Lunch']);
+    const p2 = await listInbox(c, { unreadOnly: true, limit: 1, cursor: p1.nextCursor });
+    const all = [...subjects(p1), ...subjects(p2)];
+    expect(all.filter((x) => x === 'Invoice' || x === 'Lunch')).toHaveLength(2);
+    expect(p2.items.some((m) => m.snoozeReturnedAt)).toBe(false);
+  });
+
   it('a message that leaves the folder is no longer snoozed', async () => {
     const c = await boot();
     const id = idOf(c, 'Lunch');

@@ -23,7 +23,7 @@ export function previewLine(subject: string, snippet: string): string {
   if (
     sub &&
     snip.slice(0, sub.length).toLowerCase() === sub.toLowerCase() &&
-    (snip.length === sub.length || /^[^p{L}p{N}]/u.test(snip.slice(sub.length)))
+    (snip.length === sub.length || /^[^\p{L}\p{N}]/u.test(snip.slice(sub.length)))
   ) {
     snip = snip.slice(sub.length).replace(/^[\s\-–—:]+/, '');
   }

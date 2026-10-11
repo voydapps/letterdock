@@ -191,6 +191,7 @@ export class EmlService {
     const text = parsed?.text ?? null;
     const atts: FileAttachment[] = [];
     let index = 0;
+    let named = 0;
     for (const a of (parsed?.attachments ?? []) as Attachment[]) {
       index++;
       const cid = a.cid ?? null;
@@ -198,7 +199,10 @@ export class EmlService {
       let filename = a.filename ?? null;
       const contentType = a.contentType || 'application/octet-stream';
       // A nested message is an attachment (never opened inside this one): give it a useful name.
-      if (!filename && /^message\/rfc822$/i.test(contentType)) filename = await nestedName(a.content);
+      if (!filename && /^message\/rfc822$/i.test(contentType)) {
+        // Only the first 20 are named from their subject, so many nested parts cannot stretch the 10 s limit.
+        filename = ++named <= 20 ? await nestedName(a.content) : 'message.eml';
+      }
       atts.push({
         info: { id: index, filename, contentType, size: a.size ?? a.content.length, contentId: cid, inline },
         content: a.content,

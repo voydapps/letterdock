@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.5 - 2026-10-11
+### Fixed
+- Mail that comes back from snooze now sits in one "Back from snooze" group at the top of your list. Before, it could split the "Today" group in two, so hiding "Today" hid only part of it. This also works with conversations and in the Unread view.
+- If you start Letterdock with several .eml files and more than one cannot be opened, one window now lists every file with its reason. Before, only the first problem was shown.
+- Reopening .eml files after Letterdock restarts its mail engine no longer lets more than 15 windows stay open.
+- The shortcut list now calls Ctrl+O "Open .eml file", like the command box.
+
 ## 0.6.4 - 2026-10-11
 ### New
 - Open .eml files: double-click a saved message, use Open with, or drag it onto Letterdock. Letterdock now appears in Windows Default apps for .eml; it never makes itself the default.

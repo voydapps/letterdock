@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 const root = path.resolve('site');
-const types = {'.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml'};
+const types = {'.webmanifest':'application/manifest+json','.xml':'application/xml','.txt':'text/plain','.html':'text/html','.css':'text/css','.js':'text/javascript','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml'};
 const srv = http.createServer((q,r)=>{ let p=q.url.split('?')[0]; if(p.endsWith('/'))p+='index.html'; const f=path.join(root,p); if(!fs.existsSync(f)){r.statusCode=404;return r.end();} r.setHeader('content-type',types[path.extname(f)]||'application/octet-stream'); r.end(fs.readFileSync(f)); }).listen(0);
 const base = `http://localhost:${srv.address().port}/`;
 const out = process.argv[2];

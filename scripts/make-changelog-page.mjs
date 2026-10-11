@@ -1,7 +1,10 @@
-// Builds site/changelog.html from CHANGELOG.md (the single source).
+// Builds site/changelog.html from CHANGELOG.md (the single source). It also keeps two other site files current:
+//   - "softwareVersion" in the JSON-LD of site/index.html = the version in package.json
+//   - <lastmod> in site/sitemap.xml (both URLs) = the date of the newest CHANGELOG.md entry (never "today")
 //
-//   node scripts/make-changelog-page.mjs           write site/changelog.html
-//   node scripts/make-changelog-page.mjs --check   exit 1 when the committed page is out of date (used by CI)
+//   node scripts/make-changelog-page.mjs           write site/changelog.html, site/sitemap.xml and the version in site/index.html
+//   node scripts/make-changelog-page.mjs --check   exit 1 when any of the three is out of date (used by CI)
+//   (npm run site:changelog is the same as the first line)
 //
 // CHANGELOG.md format:  "## <label> - <YYYY-MM-DD>", then "### New | Faster | Changed | Fixed" groups
 // (in that order), then "- " bullets. Only `code` is allowed inside a bullet; everything else is escaped.
@@ -12,6 +15,10 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcFile = join(root, 'CHANGELOG.md');
 const outFile = join(root, 'site', 'changelog.html');
+const indexFile = join(root, 'site', 'index.html');
+const sitemapFile = join(root, 'site', 'sitemap.xml');
+const pkgFile = join(root, 'package.json');
+const SITE = 'https://voydapps.github.io/letterdock/';
 const GROUPS = ['New', 'Faster', 'Changed', 'Fixed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -81,7 +88,7 @@ ${groups}
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Changelog: what changed in each Letterdock version</title>
 <meta name="description" content="What is new in each version of Letterdock, the free email app for Windows. Newest version first.">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -89,10 +96,14 @@ ${groups}
 <meta name="theme-color" content="#F3F3F3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#202020" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://voydapps.github.io/letterdock/changelog.html">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
 <meta property="og:site_name" content="Letterdock">
 <meta property="og:title" content="Changelog: what changed in each Letterdock version">
 <meta property="og:description" content="What is new in each version of Letterdock, the free email app for Windows. Newest version first.">
@@ -108,6 +119,9 @@ ${groups}
 <meta name="twitter:image:alt" content="Letterdock: all your email accounts in one free app.">
 <link rel="stylesheet" href="style.css">
 <script src="site.js" defer></script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Letterdock","item":"https://voydapps.github.io/letterdock/"},{"@type":"ListItem","position":2,"name":"Changelog","item":"https://voydapps.github.io/letterdock/changelog.html"}]}
+</script>
 </head>
 <body>
 <!-- Generated from CHANGELOG.md by scripts/make-changelog-page.mjs. Do not edit by hand. -->
@@ -180,20 +194,44 @@ ${arts}
 `;
 }
 
-const html = page(parse(readFileSync(srcFile, 'utf8')));
-if (process.argv.includes('--check')) {
-  let have = '';
+const entries = parse(readFileSync(srcFile, 'utf8'));
+const html = page(entries);
+const version = JSON.parse(readFileSync(pkgFile, 'utf8')).version;
+const newest = entries.map((e) => e.date).sort().at(-1);
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>${SITE}</loc><lastmod>${newest}</lastmod></url>
+  <url><loc>${SITE}changelog.html</loc><lastmod>${newest}</lastmod></url>
+</urlset>
+`;
+const VERSION_RE = /("softwareVersion"\s*:\s*")[^"]*(")/;
+const lf = (s) => s.replace(/\r\n/g, '\n');
+const read = (f) => {
   try {
-    have = readFileSync(outFile, 'utf8').replace(/\r\n/g, '\n');
+    return readFileSync(f, 'utf8');
   } catch {
-    /* a missing file counts as out of date */
+    return ''; // a missing file counts as out of date
   }
-  if (have !== html) {
-    console.error('site/changelog.html is out of date. Run:  npm run site:changelog');
-    process.exit(1);
-  }
-  console.log('site/changelog.html is up to date.');
+};
+const indexRaw = read(indexFile);
+if (!VERSION_RE.test(indexRaw)) throw new Error('site/index.html has no "softwareVersion" in its JSON-LD');
+// Keep the file's own line endings (the working copy may be CRLF on Windows), so only the version changes.
+const indexNew = indexRaw.replace(VERSION_RE, `$1${version}$2`);
+
+if (process.argv.includes('--check')) {
+  let bad = 0;
+  const stale = (what) => {
+    console.error(`${what} is out of date. Run:  npm run site:changelog`);
+    bad++;
+  };
+  if (lf(read(outFile)) !== html) stale('site/changelog.html');
+  if (lf(indexRaw) !== lf(indexNew)) stale(`"softwareVersion" in site/index.html (should be ${version})`);
+  if (lf(read(sitemapFile)) !== sitemap) stale(`site/sitemap.xml (lastmod should be ${newest})`);
+  if (bad) process.exit(1);
+  console.log(`site/changelog.html, site/sitemap.xml and the version in site/index.html (${version}) are up to date.`);
 } else {
   writeFileSync(outFile, html);
-  console.log(`Wrote site/changelog.html (${(html.length / 1024).toFixed(1)} KB).`);
+  writeFileSync(sitemapFile, sitemap);
+  if (indexNew !== indexRaw) writeFileSync(indexFile, indexNew);
+  console.log(`Wrote site/changelog.html (${(html.length / 1024).toFixed(1)} KB), site/sitemap.xml (lastmod ${newest}) and softwareVersion ${version} in site/index.html.`);
 }

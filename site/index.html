@@ -2,20 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
-<title>Letterdock: free email client for Windows with unlimited accounts</title>
-<meta name="description" content="Letterdock is a free, open-source email app for Windows. Add as many accounts as you like. Your mail stays on your PC. No subscription, no tracking.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Letterdock: free email client for Windows, unlimited accounts</title>
+<meta name="description" content="Free, open-source email client for Windows 10 and 11. Manage unlimited Gmail, Yahoo, iCloud and IMAP accounts in one app. Mail stays on your PC. No subscription.">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F3F3F3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#202020" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://voydapps.github.io/letterdock/">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
 <meta property="og:site_name" content="Letterdock">
-<meta property="og:title" content="Letterdock: free email client for Windows with unlimited accounts">
+<meta property="og:title" content="Letterdock: free email client for Windows, unlimited accounts">
 <meta property="og:description" content="Free, open-source email app for Windows. Unlimited accounts. No subscription, no tracking.">
 <meta property="og:url" content="https://voydapps.github.io/letterdock/">
 <meta property="og:image" content="https://voydapps.github.io/letterdock/og.png">
@@ -23,7 +27,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Letterdock: all your email accounts in one free app.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Letterdock: free email client for Windows with unlimited accounts">
+<meta name="twitter:title" content="Letterdock: free email client for Windows, unlimited accounts">
 <meta name="twitter:description" content="Free, open-source email app for Windows. Unlimited accounts. No subscription, no tracking.">
 <meta name="twitter:image" content="https://voydapps.github.io/letterdock/og.png">
 <meta name="twitter:image:alt" content="Letterdock: all your email accounts in one free app.">
@@ -32,18 +36,35 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Letterdock",
-  "description": "A free, open-source email app for Windows with unlimited accounts. Your mail stays on your PC.",
-  "operatingSystem": "Windows 10, Windows 11",
-  "applicationCategory": "CommunicationApplication",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "license": "https://github.com/voydapps/letterdock/blob/main/LICENSE",
-  "downloadUrl": "https://github.com/voydapps/letterdock/releases/latest",
-  "url": "https://voydapps.github.io/letterdock/",
-  "image": "https://voydapps.github.io/letterdock/og.png",
-  "author": { "@type": "Organization", "name": "voyd", "url": "https://github.com/voydapps" },
-  "publisher": { "@type": "Organization", "name": "voyd", "url": "https://github.com/voydapps" }
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://voydapps.github.io/letterdock/#website",
+      "name": "Letterdock",
+      "url": "https://voydapps.github.io/letterdock/",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://voydapps.github.io/letterdock/#app",
+      "name": "Letterdock",
+      "description": "A free, open-source email client for Windows with unlimited accounts. Your mail stays on your PC.",
+      "applicationCategory": "CommunicationApplication",
+      "operatingSystem": "Windows 10, Windows 11",
+      "softwareVersion": "0.6.5",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "license": "https://github.com/voydapps/letterdock/blob/main/LICENSE",
+      "downloadUrl": "https://github.com/voydapps/letterdock/releases/latest/download/Letterdock-Setup.exe",
+      "releaseNotes": "https://voydapps.github.io/letterdock/changelog.html",
+      "url": "https://voydapps.github.io/letterdock/",
+      "image": "https://voydapps.github.io/letterdock/og.png",
+      "screenshot": "https://voydapps.github.io/letterdock/screenshots/full/hero-light.png",
+      "sameAs": ["https://github.com/voydapps/letterdock"],
+      "author": { "@type": "Organization", "name": "voyd", "url": "https://github.com/voydapps" },
+      "publisher": { "@type": "Organization", "name": "voyd", "url": "https://github.com/voydapps" }
+    }
+  ]
 }
 </script>
 </head>
@@ -76,7 +97,7 @@
   <div class="wrap">
     <img class="logo" src="favicon.svg" alt="" width="72" height="72">
     <h1 id="h-hero">All your email accounts in one free app</h1>
-    <p class="lead">No limits. No subscription. Your mail stays on your PC.</p>
+    <p class="lead">A free email client for Windows. No limits, no subscription. Your mail stays on your PC.</p>
     <div class="btns">
       <a class="btn primary" href="https://github.com/voydapps/letterdock/releases/latest/download/Letterdock-Setup.exe" aria-label="Download Letterdock for Windows">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5.5l7.5-1v7H3zM11.5 4.3L21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
@@ -412,6 +433,9 @@
     <div class="faq">
       <details><summary>Is it really free?</summary><div class="ans"><p>Yes. There are no paid plans and no limits on accounts. It is open source under the MIT license.</p></div></details>
       <details><summary>Does it work on Mac, Linux or phones?</summary><div class="ans"><p>Not right now. Letterdock is for Windows 10 and 11 (64-bit) only.</p></div></details>
+      <details><summary>Is there a Gmail app for Windows?</summary><div class="ans"><p>Letterdock works with Gmail. Use a Gmail app password, not your normal password (see <a href="#app-password">the 3 steps</a>). You can put your Gmail next to other accounts in one inbox.</p></div></details>
+      <details><summary>Is Letterdock an alternative to Outlook or Thunderbird?</summary><div class="ans"><p>It does the same basic job: read and send mail from many accounts on a Windows PC. Letterdock is newer. Outlook and Hotmail accounts cannot be added yet (Sign in with Microsoft is coming). Try it and see if it fits you.</p></div></details>
+      <details><summary>Can I use more than one email account?</summary><div class="ans"><p>Yes. There is no limit. All accounts can share one inbox.</p></div></details>
       <details><summary>Is it safe? Why does Windows warn me?</summary><div class="ans"><p>The installer is not signed with a paid certificate yet, so Windows is careful. The code is public and anyone can check it. See <a href="#install">How to install</a>.</p></div></details>
       <details><summary>Where is my mail stored?</summary><div class="ans"><p>On your PC only. Your mail also stays on your provider&rsquo;s server, as always. Removing an account in Letterdock does not delete mail on the server.</p></div></details>
       <details><summary>Can Letterdock open .eml files? And .msg?</summary><div class="ans"><p>Yes for .eml. Double-click a saved message, use Open with, drag it onto Letterdock, or press Ctrl+O. Letterdock shows up in Windows Default apps for .eml, but it never makes itself the default. .msg files (from Outlook) are not supported.</p></div></details>

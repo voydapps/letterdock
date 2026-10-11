@@ -25,8 +25,11 @@
       try { localStorage.setItem(K, t); } catch { /* no storage */ }
     });
   }
-  var a = d.getElementById('apw-link');
-  if (a) a.addEventListener('click', function () { d.getElementById('app-password').open = true; });
+  // Any link to #app-password (the Gmail card and the FAQ) opens the 3-step box.
+  var apw = d.getElementById('app-password');
+  if (apw) [].forEach.call(d.querySelectorAll('a[href="#app-password"]'), function (a) {
+    a.addEventListener('click', function () { apw.open = true; });
+  });
 })();
 
 // Screenshot viewer: opens every .zoom link in a large dialog. Without JS the link opens the PNG.

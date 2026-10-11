@@ -1369,9 +1369,10 @@ mark {
   border-radius: 8px;
   color-scheme: light;
 }
-/* The message frame is focused by code when a window opens (so the arrow keys scroll it). That
-   must not draw a frame: no outline for code or mouse focus. Keyboard focus (Tab) keeps the app
-   ring, drawn inside the frame because a shadow outside would be cut off by the card. */
+/* The viewer focuses the message body box (.mbody) by code when a window opens, so the arrow keys
+   scroll it. The app's global :focus-visible ring (white in the dark theme) must not show for that:
+   no ring for code or mouse focus. Keyboard focus (Tab) keeps the app ring. On the frame the ring
+   is drawn inside, because a shadow outside would be cut off by the card. */
 .mbody iframe:focus,
 .mbody iframe:focus-visible {
   outline: none;

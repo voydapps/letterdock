@@ -29,6 +29,7 @@ export const DEFAULT_SORT: ListSort = { sort: 'date', direction: 'desc' };
 export type Page = 'mail' | 'settings';
 export type SettingsSection =
   'accounts' | 'general' | 'appearance' | 'mail' | 'rules' | 'notifications' | 'keys' | 'shortcuts' | 'about';
+export type SettingsAnchor = 'quick-replies';
 export type Density = 'compact' | 'comfortable' | 'roomy';
 export type LayoutMode = 'wide' | 'medium' | 'narrow';
 
@@ -115,6 +116,8 @@ interface UiState {
   page: Page;
   settingsSection: SettingsSection;
   settingsAccountId: AccountId | null;
+  /** A part of the settings page to scroll to and focus once (cleared by that part). */
+  settingsAnchor: SettingsAnchor | null;
   view: View;
   /** The view to return to when a search ends. */
   prevView: View;
@@ -156,7 +159,7 @@ interface UiState {
   set: (p: Partial<UiState>) => void;
   setView: (v: View) => void;
   toggleExpanded: (id: AccountId, value?: boolean) => void;
-  openSettings: (section?: SettingsSection, accountId?: AccountId | null) => void;
+  openSettings: (section?: SettingsSection, accountId?: AccountId | null, anchor?: SettingsAnchor) => void;
   closeSettings: () => void;
   startSearch: (query: string, accountId: AccountId | null) => void;
   exitSearch: () => void;
@@ -185,6 +188,7 @@ export const useUi = create<UiState>()(
       page: 'mail',
       settingsSection: 'accounts',
       settingsAccountId: null,
+      settingsAnchor: null,
       view: { kind: 'all' },
       prevView: { kind: 'all' },
       unreadOnly: false,
@@ -214,12 +218,13 @@ export const useUi = create<UiState>()(
       setView: (view) => set({ view, page: 'mail', drawerOpen: false, readerOpen: false }),
       toggleExpanded: (id, value) =>
         set((s) => ({ expanded: { ...s.expanded, [id]: value ?? !s.expanded[id] } })),
-      openSettings: (section, accountId) =>
+      openSettings: (section, accountId, anchor) =>
         set((s) => ({
           page: 'settings',
           drawerOpen: false,
           settingsSection: section ?? s.settingsSection,
           settingsAccountId: accountId === undefined ? null : accountId,
+          settingsAnchor: anchor ?? null,
         })),
       closeSettings: () => set({ page: 'mail' }),
       startSearch: (query, accountId) =>

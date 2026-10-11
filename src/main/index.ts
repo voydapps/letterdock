@@ -374,9 +374,9 @@ async function boot(): Promise<void> {
     onSettingsChanged: (patch) => applySettingsChange(patch),
     print: { imagesHandle: images.handle, tempDir: printTemp },
     showUndoInMain: (e) => relayUndoToMain(mainWindow, e),
-    openSettingsInMain: (section) => {
+    openSettingsInMain: (section, anchor) => {
       focusMain();
-      send({ type: 'ui:openSettings', section });
+      send({ type: 'ui:openSettings', section, ...(anchor ? { anchor } : {}) });
       return true;
     },
   });

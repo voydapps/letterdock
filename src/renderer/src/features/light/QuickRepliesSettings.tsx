@@ -1,9 +1,10 @@
 // Settings > Mail > QUICK REPLIES (DESIGN-SPEC 3.13.4). Loads when the Mail page opens; read only from settings.
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { MAX_QUICK_REPLIES, QUICK_REPLY_NAME_MAX, QUICK_REPLY_TEXT_MAX, type QuickReply } from '../../../../shared/ipc';
 import { Icon } from '../../components/Icon';
 import { AccountBadge, Button, Dialog, IconButton, SelectField } from '../../components/ui';
 import { useApp } from '../../store/app';
+import { useUi } from '../../store/ui';
 import { useAccountColor } from '../../lib/hooks';
 import { asAppError } from '../../lib/api';
 import { toast, toastError } from '../../store/toasts';
@@ -18,6 +19,19 @@ export default function QuickRepliesSettings() {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [narrow, setNarrow] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Opened from the compose window (Manage quick replies): scroll here and focus the heading, once.
+  const anchored = useUi((s) => s.settingsAnchor === 'quick-replies');
+  const ready = !!settings;
+  useEffect(() => {
+    if (!anchored || !ready) return;
+    const h = heading.current;
+    if (h) {
+      h.scrollIntoView({ block: 'start' });
+      h.focus({ preventScroll: true });
+    }
+    useUi.getState().set({ settingsAnchor: null });
+  }, [anchored, ready]);
   if (!settings) return null;
   const list = settings.quickReplies;
   const full = list.length >= MAX_QUICK_REPLIES;
@@ -61,7 +75,7 @@ export default function QuickRepliesSettings() {
   return (
     <div ref={wrap}>
       <div className="qr-head">
-        <h2 id="h-qr">QUICK REPLIES</h2>
+        <h2 id="h-qr" ref={heading} tabIndex={-1}>QUICK REPLIES</h2>
         <span className="qr-count" aria-live={list.length >= MAX_QUICK_REPLIES - 3 ? 'polite' : 'off'}>
           {list.length} of {MAX_QUICK_REPLIES}
         </span>

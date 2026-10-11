@@ -105,7 +105,7 @@ export function useAppEvents(): void {
         useUndo.getState().push(e.undoToken, e.count);
         toast(e.label, { actionLabel: 'Undo', onAction: () => void undoWithToken(e.undoToken), duration: 6000 });
       } else if (e.type === 'ui:openSettings') {
-        useUi.getState().openSettings(e.section, null);
+        useUi.getState().openSettings(e.section, null, e.anchor);
       } else if (e.type === 'ui:compose') {
         call('compose.openWindow', { mode: 'new', mailto: e.mailto }).catch((err) =>
           toastError((err as { message?: string }).message ?? 'Could not open the message.'),

@@ -31,10 +31,11 @@ import { call } from '../../lib/api';
 import { LIST_MOVE_EVENT } from '../../lib/shortcuts';
 import { endDrag, startDrag } from '../../lib/dnd';
 import { snoozeGroup } from '../../lib/snooze';
+import { dateGroupOf, groupRuns } from '../../lib/listGroups';
 import { inText, rowWhenText, whenText } from '../../lib/schedule';
 import { allMuted, allPinned, canMute, canSnoozeRole, openSnoozeMenu, setMuted, setPinned, snoozeMenuEntries, unsnoozeMessages } from '../../lib/light';
 import { canPinHere } from '../../lib/pinRules';
-import { groupLabel, isValidEmail, listDate, fullDate, senderName } from '../../lib/format';
+import { isValidEmail, listDate, fullDate, senderName } from '../../lib/format';
 import { Highlight, searchTerms } from '../../lib/search';
 import { reportActionError, toastError } from '../../store/toasts';
 import { folderLabel } from '../sidebar/Sidebar';
@@ -150,21 +151,16 @@ export function MessageList({ className }: { className?: string }) {
       rest.forEach((m, i) => out.push({ type: 'row', key: `m:${m.id}`, msg: m, index: pc + i, label: '' }));
       return out;
     }
-    const groups = new Map<string, ListItem[]>();
-    const order: string[] = [];
-    rest.forEach((m) => {
-      const label = snoozedView ? snoozeGroup(m.snoozedUntil ?? now, now) : groupLabel(m.date, now);
-      if (!groups.has(label)) {
-        groups.set(label, []);
-        order.push(label);
-      }
-      groups.get(label)!.push(m);
-    });
+    // Runs of neighbouring rows, not one bucket per label: mail back from snooze sits at the top with its own
+    // header, and the rows below keep their normal date groups (a label can show up again after it).
+    const runs = groupRuns(rest, (m) => (snoozedView ? snoozeGroup(m.snoozedUntil ?? now, now) : dateGroupOf(m, now)));
+    const used = new Map<string, number>();
     let index = pc;
-    for (const label of order) {
-      const list = groups.get(label)!;
+    for (const { label, items: list } of runs) {
       const isCollapsed = !!collapsed[label];
-      out.push({ type: 'header', key: `h:${label}`, label, count: list.length, collapsed: isCollapsed });
+      const n = used.get(label) ?? 0;
+      used.set(label, n + 1);
+      out.push({ type: 'header', key: n === 0 ? `h:${label}` : `h:${label}:${n}`, label, count: list.length, collapsed: isCollapsed });
       for (const m of list) {
         if (!isCollapsed) out.push({ type: 'row', key: `m:${m.id}`, msg: m, index, label });
         index++;

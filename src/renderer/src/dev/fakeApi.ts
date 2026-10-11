@@ -1363,7 +1363,7 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       return delay({ ok: true, archivedCount, changed: ids }, 80);
     }
     case 'ui.openSettings':
-      emitToOtherWindows({ type: 'ui:openSettings', section: 'mail' });
+      emitToOtherWindows({ type: 'ui:openSettings', section: 'mail', anchor: (r as { anchor?: 'quick-replies' }).anchor });
       return delay({ delivered: true }, 30);
     case 'senders.allowImages': {
       const { address, allow } = r as { address: string; allow: boolean };

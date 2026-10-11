@@ -1235,7 +1235,7 @@ export interface IpcMethods {
    */
   'ui.showUndo': { req: ShowUndoReq; res: ShowUndoRes };
   /** A secondary window (compose) asks the main window to open Settings on a page ("Manage quick replies..."). */
-  'ui.openSettings': { req: { section: 'mail' }; res: { delivered: boolean } };
+  'ui.openSettings': { req: { section: 'mail'; anchor?: 'quick-replies' }; res: { delivered: boolean } };
   'contacts.suggest': { req: ContactSuggestReq; res: ContactSuggestion[] };
   /** Remove a suggestion for good (it is not learned again from old or new mail). */
   'contacts.forget': { req: ContactForgetReq; res: void };
@@ -1443,7 +1443,7 @@ export type AppEvent =
   | { type: 'ui:undoAvailable'; label: string; undoToken: string; count: number }
   | { type: 'ui:compose'; mailto: string }
   /** Sent to the main window: show Settings on this page. */
-  | { type: 'ui:openSettings'; section: 'mail' }
+  | { type: 'ui:openSettings'; section: 'mail'; anchor?: 'quick-replies' }
   | { type: 'engine:restarted' }; // renderer must reload state
 
 // ================================ preload API ================================

@@ -69,7 +69,7 @@ export default function QuickReplyMenu({
 
   const manage = () => {
     onClose();
-    call('ui.openSettings', { section: 'mail' }).catch((e) => toastError((e as { message?: string }).message ?? 'Could not open Settings.'));
+    call('ui.openSettings', { section: 'mail', anchor: 'quick-replies' }).catch((e) => toastError((e as { message?: string }).message ?? 'Could not open Settings.'));
   };
   const onKey = (e: RKE<HTMLDivElement>) => {
     e.stopPropagation();

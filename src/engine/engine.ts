@@ -284,7 +284,7 @@ export function createEngine(opts: EngineOptions): Engine {
     'unsubscribe.record': (r) => unsubscribe.record(r.messageId, r.method),
     'unsubscribe.targets': (r) => unsubscribe.targets(r.messageId),
     'unsubscribe.sendMailto': (r) => unsubscribe.sendMailto(r),
-    // A button on a notification (DESIGN-SPEC 3.13.3): silent when the message is gone, read or archived.
+    // A button on a notification (DESIGN-SPEC 3.13.3): silent when the message is gone, read, archived or deleted.
     'notifications.action': async (r) => {
       const row = ctx.messages.row(r.messageId);
       if (!row || row.account_id !== r.accountId || row.flag_deleted === 1) return { done: false };
@@ -294,6 +294,13 @@ export function createEngine(opts: EngineOptions): Engine {
         return { done: res.succeeded.length > 0 };
       }
       if (ctx.folders.row(row.folder_id)?.role !== 'inbox') return { done: false };
+      if (r.action === 'delete') {
+        // SAFETY: the normal `delete` is PERMANENT when the account has no Trash folder or the message is
+        // already in Trash. A button must only ever move to Trash, so refuse silently when Trash is unknown.
+        if (!ctx.folders.rowByRole(row.account_id, 'trash')) return { done: false };
+        const del = await actions.apply({ messageIds: [row.id], action: { type: 'delete' } });
+        return { done: del.succeeded.length > 0, undoToken: del.undoToken };
+      }
       const res = await actions.apply({ messageIds: [row.id], action: { type: 'archive' } });
       return { done: res.succeeded.length > 0, undoToken: res.undoToken };
     },

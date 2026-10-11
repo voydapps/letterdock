@@ -50,7 +50,7 @@ export async function onToastActivation(
     const code = (e as { code?: unknown } | null)?.code;
     const signIn = code === 'AUTH_FAILED' || code === 'OAUTH_REAUTH_REQUIRED';
     d.showPlain(
-      a.action === 'archive' ? "Couldn't archive" : "Couldn't mark as read",
+      a.action === 'archive' ? "Couldn't archive" : a.action === 'delete' ? "Couldn't delete" : "Couldn't mark as read",
       signIn ? 'Open Letterdock to sign in.' : 'Open Letterdock to try again.',
     );
   }

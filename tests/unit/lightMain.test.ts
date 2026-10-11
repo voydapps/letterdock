@@ -39,14 +39,19 @@ describe('toast XML', () => {
       buttons: [
         { action: 'read', label: 'Mark as read' },
         { action: 'archive', label: 'Archive' },
+        { action: 'delete', label: 'Delete' },
       ],
     });
     expect(xml).toContain('<text>Alice &lt;a@x.com&gt; &amp; &quot;co&quot;</text>');
     expect(xml).toContain('<text>It&apos;s 5 &lt; 6</text>');
     expect(xml).toContain('<audio silent="true"/>');
-    expect(xml.match(/activationType="background"/g)).toHaveLength(2);
+    expect(xml.match(/activationType="background"/g)).toHaveLength(3);
     expect(xml).toContain('content="Mark as read"');
     expect(xml).toContain('content="Archive"');
+    expect(xml).toContain('content="Delete"');
+    // order: Mark as read, Archive, Delete (Delete last)
+    expect([...xml.matchAll(/<action content="([^"]+)"/g)].map((m) => m[1])).toEqual(['Mark as read', 'Archive', 'Delete']);
+    expect(xml).toContain('arguments="a=delete&amp;acc=acc+%26+%3C1%3E&amp;msg=42"');
     // nothing from the mail can break out of an attribute
     expect(xml).not.toMatch(/acc & </);
     expect(xml.startsWith('<toast launch="')).toBe(true);
@@ -61,6 +66,14 @@ describe('toast XML', () => {
     expect(xml.match(/<text>/g)).toHaveLength(1); // empty body = no empty line
   });
 
+  it('two buttons without Archive: Mark as read and Delete', () => {
+    const xml = buildToastXml({
+      title: 'T', body: 'B', silent: false, context: ctx,
+      buttons: [{ action: 'read', label: 'Mark as read' }, { action: 'delete', label: 'Delete' }],
+    });
+    expect([...xml.matchAll(/<action content="([^"]+)"/g)].map((m) => m[1])).toEqual(['Mark as read', 'Delete']);
+  });
+
   it('drops characters XML cannot hold', () => {
     expect(escapeXml('a\u0000b\u0008c\u001fd')).toBe('abcd');
   });
@@ -68,13 +81,13 @@ describe('toast XML', () => {
   it('round-trips the activation arguments, also for odd account ids', () => {
     const args = encodeActivationArgs('archive', ctx);
     expect(parseActivationArgs(args)).toEqual({ action: 'archive', accountId: ctx.accountId, messageId: 42 });
-    for (const a of ['open', 'read'] as const) {
+    for (const a of ['open', 'read', 'delete'] as const) {
       expect(parseActivationArgs(encodeActivationArgs(a, ctx))?.action).toBe(a);
     }
   });
 
   it('ignores arguments that are not ours', () => {
-    for (const bad of [undefined, null, '', 'foo=bar', 'a=delete&acc=x&msg=1', 'a=read&acc=&msg=1', 'a=read&acc=x&msg=abc',
+    for (const bad of [undefined, null, '', 'foo=bar', 'a=purge&acc=x&msg=1', 'a=DELETE&acc=x&msg=1', 'a=read&acc=&msg=1', 'a=read&acc=x&msg=abc',
       'a=read&acc=x&msg=-1', 'a=read&acc=x&msg=1e3', `a=read&acc=${'x'.repeat(200)}&msg=1`, 'x'.repeat(1000)]) {
       expect(parseActivationArgs(bad as string)).toBeNull();
     }
@@ -101,6 +114,29 @@ describe('toast activation', () => {
     expect(raw.engine).toHaveBeenCalledWith('notifications.action', { accountId: 'a1', messageId: 7, action: 'archive' });
     expect(raw.openMessage).not.toHaveBeenCalled(); // nothing comes to the front
     expect(sent).toEqual([{ type: 'notify:actionDone', action: 'archive', accountId: 'a1', messageId: 7, undoToken: 'tok' }]);
+  });
+
+  it('Delete runs in the background and sends actionDone with the undo token', async () => {
+    const { d, sent, raw } = deps();
+    await onToastActivation(d, { arguments: encodeActivationArgs('delete', { accountId: 'a1', messageId: 7 }), type: 'action' });
+    expect(raw.engine).toHaveBeenCalledWith('notifications.action', { accountId: 'a1', messageId: 7, action: 'delete' });
+    expect(raw.openMessage).not.toHaveBeenCalled();
+    expect(sent).toEqual([{ type: 'notify:actionDone', action: 'delete', accountId: 'a1', messageId: 7, undoToken: 'tok' }]);
+    const refused = deps({ engine: vi.fn(async () => ({ done: false })) as never });
+    await onToastActivation(refused.d, { arguments: encodeActivationArgs('delete', { accountId: 'a1', messageId: 7 }) });
+    expect(refused.sent).toEqual([]);
+    const hidden = deps({ mainVisible: () => false });
+    await onToastActivation(hidden.d, { arguments: encodeActivationArgs('delete', { accountId: 'a1', messageId: 7 }) });
+    expect(hidden.sent).toEqual([]);
+  });
+
+  it('a failing Delete says "Couldn\'t delete" (and the sign-in variant)', async () => {
+    const f = deps({ engine: vi.fn(async () => { throw new Error('down'); }) as never });
+    await onToastActivation(f.d, { arguments: encodeActivationArgs('delete', { accountId: 'a1', messageId: 7 }) });
+    expect(f.raw.showPlain).toHaveBeenCalledWith("Couldn't delete", 'Open Letterdock to try again.');
+    const s = deps({ engine: vi.fn(async () => { throw Object.assign(new Error('x'), { code: 'AUTH_FAILED' }); }) as never });
+    await onToastActivation(s.d, { arguments: encodeActivationArgs('delete', { accountId: 'a1', messageId: 7 }) });
+    expect(s.raw.showPlain).toHaveBeenCalledWith("Couldn't delete", 'Open Letterdock to sign in.');
   });
 
   it('says nothing when the window is hidden, or the message is already gone or read', async () => {
@@ -166,16 +202,16 @@ describe('Notifier: buttons and snooze return', () => {
     return { n, toasts, fire };
   }
 
-  it('one message gets Mark as read and Archive; no Archive button without an Archive folder', async () => {
+  it('one message gets Mark as read, Archive and Delete (Delete last); no Archive button without an Archive folder', async () => {
     const a = setup();
     a.n.newMail('a1', [msg(1)], true);
     await a.fire();
-    expect(a.toasts[0]!.buttons?.map((b) => b.action)).toEqual(['read', 'archive']);
+    expect(a.toasts[0]!.buttons?.map((b) => b.action)).toEqual(['read', 'archive', 'delete']);
     expect(a.toasts[0]!.context).toEqual({ accountId: 'a1', messageId: 1 });
     const b = setup();
     b.n.newMail('a1', [msg(2)], false);
     await b.fire();
-    expect(b.toasts[0]!.buttons?.map((x) => x.action)).toEqual(['read']);
+    expect(b.toasts[0]!.buttons?.map((x) => x.action)).toEqual(['read', 'delete']);
   });
 
   it('a grouped toast has no buttons, and the setting turns them off', async () => {
@@ -190,12 +226,12 @@ describe('Notifier: buttons and snooze return', () => {
     expect(off.toasts[0]!.buttons).toBeUndefined();
   });
 
-  it('keeps the buttons in the "New mail" privacy mode', async () => {
+  it('keeps Mark as read and Archive, but hides Delete, in the "New mail" privacy mode', async () => {
     const a = setup({ notifications: { ...DEFAULT_SETTINGS.notifications, showPreview: false } });
     a.n.newMail('a1', [msg(1)], true);
     await a.fire();
     expect(a.toasts[0]).toMatchObject({ title: 'New mail', body: 'Work' });
-    expect(a.toasts[0]!.buttons).toHaveLength(2);
+    expect(a.toasts[0]!.buttons?.map((b) => b.action)).toEqual(['read', 'archive']);
   });
 
   it('shows one "Snoozed mail is back" notification, honoring the settings', () => {

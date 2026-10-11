@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 - 2026-10-11
+### New
+- Delete button on the Windows notification for one new message. It moves the message to Trash. It is hidden when notifications show New mail only.
+
 ## 0.6.1 - 2026-10-11
 ### Fixed
 - Manage quick replies, in the new email window, now opens Settings right at the Quick replies section.

@@ -141,10 +141,10 @@ export function useAppEvents(): void {
         scheduleRefresh();
       } else if (e.type === 'notify:actionDone') {
         // A button on a notification did its work in the background (DESIGN-SPEC 3.13.3).
-        if (e.action === 'archive') {
+        if (e.action === 'archive' || e.action === 'delete') {
           const token = e.undoToken;
           if (token) useUndo.getState().push(token, 1);
-          toast('Moved to Archive', {
+          toast(e.action === 'delete' ? 'Moved to Trash' : 'Moved to Archive', {
             duration: 6000,
             ...(token ? { actionLabel: 'Undo', onAction: () => void undoWithToken(token) } : {}),
           });

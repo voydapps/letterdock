@@ -1067,10 +1067,10 @@ function Notifications() {
         <Checkbox
           checked={settings.notifyActions}
           disabled={!n.enabled}
-          label="Show Mark as read and Archive buttons on notifications"
+          label="Show action buttons on notifications"
           onChange={(v) => void set({ notifyActions: v })}
         />
-        <p className="hint rad-hint">Only on notifications for one message.</p>
+        <p className="hint rad-hint">Mark as read, Archive and Delete. Only on notifications for one message.</p>
         <Checkbox
           checked={settings.notifySnoozeReturn}
           disabled={!n.enabled}

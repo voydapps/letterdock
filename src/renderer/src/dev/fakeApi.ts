@@ -1828,9 +1828,9 @@ export function installFakeApi(): void {
   (window as unknown as { __fakeScenario: (name: string) => void }).__fakeScenario = runScenario;
   // Dev hooks for the light features: __fakeLight('actionDone' | 'actionRead' | 'wake').
   (window as unknown as { __fakeLight: (name: string) => void }).__fakeLight = (name) => {
-    if (name === 'actionDone' || name === 'actionRead') {
+    if (name === 'actionDone' || name === 'actionRead' || name === 'actionDelete') {
       const m = messages.find((x) => x.accountId === 'a1' && folderOf(x.folderId).role === 'inbox');
-      if (m) emit({ type: 'notify:actionDone', action: name === 'actionRead' ? 'read' : 'archive', accountId: m.accountId, messageId: m.id, undoToken: 'fake-undo' });
+      if (m) emit({ type: 'notify:actionDone', action: name === 'actionRead' ? 'read' : name === 'actionDelete' ? 'delete' : 'archive', accountId: m.accountId, messageId: m.id, undoToken: 'fake-undo' });
     } else if (name === 'wake') {
       const woken = messages.filter((m) => m.snoozedUntil);
       for (const m of woken) {

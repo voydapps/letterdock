@@ -12,7 +12,7 @@ export interface ToastSpec {
    * buttons to show. The shell turns this into toast XML; without it, a plain notification is shown.
    */
   context?: { accountId: string; messageId: number };
-  buttons?: { action: 'read' | 'archive'; label: string }[];
+  buttons?: { action: 'read' | 'archive' | 'delete'; label: string }[];
 }
 
 export interface NotifierDeps {
@@ -87,12 +87,14 @@ export class Notifier {
       });
       return;
     }
-    // Buttons (Mark as read / Archive) only on a notification for one message, if the setting is on.
-    // They show also in the "New mail only" privacy mode: they reveal nothing.
+    // Buttons (Mark as read / Archive / Delete) only on a notification for one message, if the setting is on.
+    // Mark as read and Archive also show in the "New mail only" privacy mode: they reveal nothing.
+    // Delete does not: the user cannot see which message it is (DESIGN-SPEC 3.13.3).
     const withButtons = this.d.settings().notifyActions !== false;
     const buttons = (): NonNullable<ToastSpec['buttons']> => [
       { action: 'read', label: 'Mark as read' },
       ...(this.canArchive.get(accountId) ? [{ action: 'archive' as const, label: 'Archive' }] : []),
+      ...(prefs.showPreview ? [{ action: 'delete' as const, label: 'Delete' }] : []),
     ];
     for (const m of batch) {
       const sender = m.from?.name || m.from?.address || 'Unknown sender';

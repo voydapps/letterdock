@@ -1365,13 +1365,13 @@ export type AppEvent =
   /** Snoozed mail came back by itself (not for "Unsnooze now"). Main shows the "Snoozed mail is back" notification. */
   | { type: 'snooze:returned'; accountId: AccountId; messages: MessageHeader[] }
   /**
-   * A button on a notification (Mark as read / Archive) did its work in the background. Show the
-   * in-app toast only if the main window is visible: "Marked as read" / "Moved to Archive [Undo]"
+   * A button on a notification (Mark as read / Archive / Delete) did its work in the background. Show the
+   * in-app toast only if the main window is visible: "Marked as read" / "Moved to Archive [Undo]" / "Moved to Trash [Undo]"
    * (`undoToken` for `messages.undo`). Sent to the main window only.
    */
   | {
       type: 'notify:actionDone';
-      action: 'read' | 'archive';
+      action: 'read' | 'archive' | 'delete';
       accountId: AccountId;
       messageId: MessageId;
       undoToken?: string;

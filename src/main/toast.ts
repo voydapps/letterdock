@@ -8,7 +8,7 @@
 // The buttons use activationType="background": pressing one runs the work without bringing any
 // window to the front.
 
-export type ToastAction = 'open' | 'read' | 'archive';
+export type ToastAction = 'open' | 'read' | 'archive' | 'delete';
 
 export interface ToastContext {
   accountId: string;
@@ -68,7 +68,7 @@ export function parseActivationArgs(raw: string | undefined | null): ParsedActiv
   const a = q.get('a');
   const acc = q.get('acc');
   const msg = q.get('msg');
-  if (a !== 'open' && a !== 'read' && a !== 'archive') return null;
+  if (a !== 'open' && a !== 'read' && a !== 'archive' && a !== 'delete') return null;
   if (!acc || acc.length > 100) return null;
   if (!msg || !/^\d{1,12}$/.test(msg)) return null;
   return { action: a, accountId: acc, messageId: Number(msg) };

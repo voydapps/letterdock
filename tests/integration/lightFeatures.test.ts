@@ -642,7 +642,7 @@ describe('unsubscribe', () => {
 });
 
 describe('notification buttons (engine side)', () => {
-  const act = (c: Booted, id: number, action: 'read' | 'archive', accountId = c.acc.id) =>
+  const act = (c: Booted, id: number, action: 'read' | 'archive' | 'delete', accountId = c.acc.id) =>
     call<{ done: boolean; undoToken?: string }>(c.h, 'notifications.action', { accountId, messageId: id, action });
 
   it('Mark as read marks it, silently skips a read or missing message', async () => {
@@ -667,6 +667,59 @@ describe('notification buttons (engine side)', () => {
     expect(await act(c, id, 'archive')).toEqual({ done: false });
     await call(c.h, 'messages.undo', { undoToken: res.undoToken });
     expect(rowOf(c, 'Invoice').folder_id).toBe(c.h.folderByRole(c.acc.id, 'inbox').id);
+  });
+
+  it('Delete moves it to Trash with an undo token; the mail is not expunged', async () => {
+    const c = await boot();
+    const id = idOf(c, 'Invoice');
+    const res = await act(c, id, 'delete');
+    expect(res.done).toBe(true);
+    expect(res.undoToken).toBeTruthy();
+    const trash = c.h.folderByRole(c.acc.id, 'trash');
+    expect(rowOf(c, 'Invoice').folder_id).toBe(trash.id);
+    expect(rowOf(c, 'Invoice').flag_deleted).toBe(0);
+    await c.h.engine.actions.drain();
+    expect(c.server.mailbox('INBOX').messages.length).toBe(4);
+    expect(c.server.mailbox(trash.path).messages.length).toBe(1);
+    // now it is in Trash, not the Inbox: a second press does nothing (never a permanent delete)
+    expect(await act(c, id, 'delete')).toEqual({ done: false });
+    await c.h.engine.actions.drain();
+    expect(c.server.mailbox(trash.path).messages.length).toBe(1);
+    await call(c.h, 'messages.undo', { undoToken: res.undoToken });
+    expect(rowOf(c, 'Invoice').folder_id).toBe(c.h.folderByRole(c.acc.id, 'inbox').id);
+  });
+
+  it('Delete never deletes permanently: no Trash folder known gives done:false and nothing changes', async () => {
+    const c = await boot();
+    const id = idOf(c, 'Lunch');
+    const db = c.h.engine.ctx.db;
+    db.prepare("UPDATE folder SET role = NULL WHERE account_id = ? AND role = 'trash'").run(c.acc.id);
+    expect(c.h.engine.ctx.folders.rowByRole(c.acc.id, 'trash')).toBeNull();
+    const before = c.server.mailbox('INBOX').messages.length;
+    expect(await act(c, id, 'delete')).toEqual({ done: false });
+    await c.h.engine.actions.drain();
+    const r = rowOf(c, 'Lunch');
+    expect(r.flag_deleted).toBe(0);
+    expect(r.folder_id).toBe(c.h.folderByRole(c.acc.id, 'inbox').id);
+    expect(c.server.mailbox('INBOX').messages.length).toBe(before);
+  });
+
+  it('Delete skips a message that is not in the Inbox, already deleted, missing or of another account', async () => {
+    const c = await boot();
+    const id = idOf(c, 'Plan');
+    const inbox = c.h.folderByRole(c.acc.id, 'inbox');
+    const archive = c.h.folderByRole(c.acc.id, 'archive');
+    const db = c.h.engine.ctx.db;
+    db.prepare('UPDATE message SET folder_id = ? WHERE id = ?').run(archive.id, id);
+    expect(await act(c, id, 'delete')).toEqual({ done: false });
+    expect(rowOf(c, 'Plan').folder_id).toBe(archive.id);
+    db.prepare('UPDATE message SET folder_id = ? WHERE id = ?').run(inbox.id, id);
+    db.prepare('UPDATE message SET flag_deleted = 1 WHERE id = ?').run(id);
+    expect(await act(c, id, 'delete')).toEqual({ done: false });
+    expect(await act(c, 999999, 'delete')).toEqual({ done: false });
+    expect(await act(c, idOf(c, 'Lunch'), 'delete', 'wrong-account')).toEqual({ done: false });
+    await c.h.engine.actions.drain();
+    expect(c.server.mailbox('INBOX').messages.length).toBe(5);
   });
 
   it('new-mail events say whether Archive is possible and skip muted conversations', async () => {

@@ -87,9 +87,9 @@ export interface MainToEngineMethods {
     req: { messageId: number; address: string; subject: string; body: string };
     res: void;
   };
-  /** A button on a notification was pressed (Mark as read / Archive). */
+  /** A button on a notification was pressed (Mark as read / Archive / Delete). */
   'notifications.action': {
-    req: { accountId: string; messageId: number; action: 'read' | 'archive' };
+    req: { accountId: string; messageId: number; action: 'read' | 'archive' | 'delete' };
     res: { done: boolean; undoToken?: string };
   };
   /** The PC woke up from sleep or was unlocked: check the scheduled messages again. */

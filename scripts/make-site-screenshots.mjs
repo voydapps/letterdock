@@ -168,10 +168,6 @@ shot({ name: 'notifications', size: [1000, 700], theme: 'dark', build: async (ca
     .composite([{ input: await card(a, HA), left: (2000 - W * 2) / 2, top }, { input: await card(b, HB), left: (2000 - W * 2) / 2, top: top + (HA + GAP) * 2 }])
     .png().toBuffer();
 } });
-shot({ name: 'update', size: [1000, 500], theme: 'light', state: async (page) => {
-  await scenario(page, 'updateReady');
-  await sleep(800);
-} });
 shot({ name: 'settings-accounts', size: [1000, 700], theme: 'light', state: (page) => openSettings(page, 'Accounts') });
 shot({ name: 'add-account', size: [800, 600], theme: 'light', state: async (page) => {
   await page.keyboard.press('Control+,');

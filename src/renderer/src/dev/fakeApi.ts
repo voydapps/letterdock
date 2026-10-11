@@ -1826,7 +1826,7 @@ export function installFakeApi(): void {
   (window as unknown as { __fakeEmit: (e: AppEvent) => void }).__fakeEmit = emit;
   // Dev hook for the status bar (DESIGN-SPEC 4.8): __fakeScenario('syncing'), or ?fake=1&scenario=syncing.
   (window as unknown as { __fakeScenario: (name: string) => void }).__fakeScenario = runScenario;
-  // Dev hooks for the light features: __fakeLight('actionDone' | 'actionRead' | 'wake').
+  // Dev hooks for the light features: __fakeLight('actionDone' | 'actionRead' | 'actionDelete' | 'wake').
   (window as unknown as { __fakeLight: (name: string) => void }).__fakeLight = (name) => {
     if (name === 'actionDone' || name === 'actionRead' || name === 'actionDelete') {
       const m = messages.find((x) => x.accountId === 'a1' && folderOf(x.folderId).role === 'inbox');

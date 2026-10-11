@@ -115,6 +115,9 @@ describe('toast text lines', () => {
   });
   it('keeps a snippet that does not start with the subject', () => {
     expect(mailLines('Invoice', 'Dear Ann, here is the bill')).toEqual(['Invoice', 'Dear Ann, here is the bill']);
+    // a subject that is only the start of a longer word is not a copy
+    expect(mailLines('Hi', 'Hiking trip photos')).toEqual(['Hi', 'Hiking trip photos']);
+    expect(mailLines('Invoice', 'Invoices for March')).toEqual(['Invoice', 'Invoices for March']);
   });
   it('uses a placeholder for an empty subject and keeps the snippet whole', () => {
     expect(mailLines('', 'some text')).toEqual(['(no subject)', 'some text']);

@@ -19,7 +19,12 @@ export function capLine(s: string, max = LINE_CAP): string {
 export function previewLine(subject: string, snippet: string): string {
   const sub = subject.replace(/\s+/g, ' ').trim();
   let snip = snippet.replace(/\s+/g, ' ').trim();
-  if (sub && snip.slice(0, sub.length).toLowerCase() === sub.toLowerCase()) {
+  // Only a whole-word copy counts: subject "Hi" must not eat the start of "Hiking".
+  if (
+    sub &&
+    snip.slice(0, sub.length).toLowerCase() === sub.toLowerCase() &&
+    (snip.length === sub.length || /^[^p{L}p{N}]/u.test(snip.slice(sub.length)))
+  ) {
     snip = snip.slice(sub.length).replace(/^[\s\-–—:]+/, '');
   }
   if (!snip || snip.toLowerCase() === sub.toLowerCase()) return '';

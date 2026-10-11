@@ -712,6 +712,40 @@ details.tile[open]::after {
   }
 }
 
+/* From 600px an opened tile floats its panel over the tiles below: the grid never changes height. */
+@media (min-width: 600px) {
+  details.tile[open] {
+    z-index: 20;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  details.tile[open]:hover {
+    transform: none;
+  }
+  .tile[open] .more {
+    position: absolute;
+    top: 100%;
+    left: -1px;
+    right: -1px;
+    z-index: 1;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-top: 0;
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    box-shadow: var(--shadow-3);
+    transform-origin: top;
+  }
+  .tile[open] summary:focus-visible {
+    outline-offset: -3px;
+  }
+}
+@media (min-width: 600px) and (forced-colors: active) {
+  .tile[open] .more {
+    border: 1px solid CanvasText;
+    border-top: 0;
+  }
+}
+
 /* "New in x.y.z" line under the hero */
 .whatsnew {
   margin: 16px auto 0;

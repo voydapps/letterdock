@@ -56,6 +56,47 @@ for (const [w,h,scheme] of [[1440,900,'light'],[375,812,'dark'],[320,640,'light'
   ok(await pg.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `${w}: no h-scroll after`);
   await ctx.close();
 }
+// Overlay: an opened tile must not change the page layout (>= 600px); Esc closes it, but not while the viewer is open.
+for (const [w,h,scheme] of [[1440,900,'light'],[1440,900,'dark'],[1024,800,'light'],[768,900,'light'],[600,900,'light'],[375,812,'light'],[320,640,'dark']]) {
+  const ctx = await b.newContext({viewport:{width:w,height:h},colorScheme:scheme});
+  const pg = await ctx.newPage(); await pg.goto(base);
+  const m = ()=>pg.evaluate(()=>{const s=document.getElementById('features');const nx=s.nextElementSibling;return {sec:s.getBoundingClientRect().height,next:nx.getBoundingClientRect().top+scrollY,doc:document.documentElement.scrollHeight,sw:document.documentElement.scrollWidth<=innerWidth}});
+  const closed = await m();
+  const sum = pg.locator('details.tile summary').nth(3); // Send later
+  await sum.scrollIntoViewIfNeeded(); await sum.click();
+  await pg.waitForFunction(()=>document.querySelectorAll('details.tile[open]').length===1);
+  await pg.waitForTimeout(300);
+  const open = await m();
+  console.log(w, scheme, 'closed', JSON.stringify(closed), 'open', JSON.stringify(open));
+  if (w>=600) ok(closed.sec===open.sec && closed.next===open.next && closed.doc===open.doc, `${w} ${scheme}: no layout shift on open`);
+  ok(open.sw, `${w} ${scheme}: no horizontal scroll when open`);
+  const tag = `${w}-${scheme}`;
+  if (out && (w===1440||w===375)) await pg.screenshot({path:`${out}/overlay-${tag}.png`});
+  // panel not clipped: inside the viewport width
+  ok(await pg.evaluate(()=>{const r=document.querySelector('details.tile[open] .more').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth}), `${w} ${scheme}: panel inside the viewport`);
+  // viewer from inside the panel; Esc closes the viewer, tile stays; focus back on the thumbnail
+  await pg.locator('details.tile[open] a.zoom').click();
+  await pg.waitForSelector('dialog.viewer[open]');
+  await pg.keyboard.press('Escape');
+  await pg.waitForFunction(()=>!document.querySelector('dialog.viewer[open]'));
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===1 && document.activeElement===document.querySelector('details.tile[open] a.zoom')), `${w} ${scheme}: Esc closes only the viewer, tile stays open, focus on thumbnail`);
+  // viewer open, click on the dim backdrop must not close the tile either
+  await pg.locator('details.tile[open] a.zoom').click(); await pg.waitForSelector('dialog.viewer[open]');
+  await pg.mouse.click(w-3, h/2); await pg.waitForFunction(()=>!document.querySelector('dialog.viewer[open]'));
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===1), `${w} ${scheme}: backdrop click closes viewer only`);
+  await pg.waitForFunction(()=>!document.documentElement.classList.contains('viewing'));
+  // Esc now closes the tile and focuses its summary
+  await pg.keyboard.press('Escape');
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===0 && document.activeElement.tagName==='SUMMARY'), `${w} ${scheme}: Esc closes the tile`);
+  // click outside closes
+  await sum.click(); await pg.waitForFunction(()=>document.querySelectorAll('details.tile[open]').length===1);
+  await pg.mouse.click(5, 5);
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===0), `${w} ${scheme}: click outside closes`);
+  // another tile closes the first
+  await sum.click(); await pg.locator('details.tile summary').nth(5).evaluate(e=>e.focus()); await pg.keyboard.press('Enter');
+  ok(await pg.evaluate(()=>document.querySelectorAll('details.tile[open]').length===1), `${w} ${scheme}: one tile open at a time`);
+  await ctx.close();
+}
 // no JS
 const c2 = await b.newContext({javaScriptEnabled:false}); const p2 = await c2.newPage(); await p2.goto(base);
 ok((await p2.locator('a.zoom').first().getAttribute('href')).endsWith('.png'), 'nojs link to png');

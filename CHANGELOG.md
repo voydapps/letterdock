@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 - 2026-10-11
+### Fixed
+- Manage quick replies, in the new email window, now opens Settings right at the Quick replies section.
+- Mail that comes back from snooze now has its own group, Back from snooze, at the top of the list. It no longer pulls other emails with it.
+
 ## 0.6.0 - 2026-10-11
 ### New
 - Unsubscribe: mailing-list mail now has an Unsubscribe button. It shows only when Letterdock can check that the sender is real. It never runs by itself. It asks you before it sends an email or opens a web page, and it remembers the lists you left.

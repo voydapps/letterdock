@@ -98,3 +98,40 @@
     if (Math.abs(dx) > 50) show(cur + (dx < 0 ? 1 : -1));
   });
 })();
+
+// Feature tiles: from 600px the open tile floats over the ones below. Esc, a click outside or Tab-away closes it.
+// Everything waits while the screenshot viewer is open. The tiles also work without this code.
+(function () {
+  var d = document, r = d.documentElement, tiles = [].slice.call(d.querySelectorAll('details.tile'));
+  if (!tiles.length) return;
+  var wide = matchMedia('(min-width: 600px)');
+  function openTile() { return d.querySelector('details.tile[open]'); }
+  function viewing() { return r.classList.contains('viewing'); }
+  tiles.forEach(function (t) {
+    t.addEventListener('toggle', function () {
+      if (!t.open) return;
+      // fallback for browsers without the name attribute: only one tile open
+      tiles.forEach(function (o) { if (o !== t && o.open) o.open = false; });
+      var m = t.querySelector('.more');
+      if (m && wide.matches && m.getBoundingClientRect().bottom > innerHeight) {
+        m.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      }
+    });
+  });
+  d.addEventListener('keydown', function (e) {
+    var t = openTile();
+    if (e.key !== 'Escape' || !t || viewing() || e.defaultPrevented) return;
+    t.open = false;
+    t.querySelector('summary').focus();
+  });
+  d.addEventListener('pointerdown', function (e) {
+    var t = openTile();
+    if (!t || viewing() || t.contains(e.target) || e.target.closest('dialog')) return;
+    t.open = false;
+  });
+  d.addEventListener('focusout', function (e) {
+    var t = openTile(), n = e.relatedTarget;
+    if (!t || viewing() || !t.contains(e.target) || !n || t.contains(n) || n.closest('dialog')) return;
+    t.open = false;
+  });
+})();

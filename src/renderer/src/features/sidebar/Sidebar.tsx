@@ -15,6 +15,7 @@ import { useOutbox } from '../../store/outbox';
 import { useScheduled } from '../../store/scheduled';
 import { useSnooze } from '../../store/snooze';
 import { openRunRules } from '../rules/ruleActions';
+import { muteMenuLabel, toggleAccountMute } from '../../lib/accountMute';
 
 const ROLE_ORDER: FolderRole[] = ['inbox', 'drafts', 'sent', 'archive', 'all', 'junk', 'trash'];
 const ROLE_ICON: Record<FolderRole, IconName> = {
@@ -379,7 +380,7 @@ function RailAccount({
     (view.kind === 'account' && view.accountId === a.id) ||
     (view.kind === 'folder' && folders.find((f) => f.id === view.folderId)?.accountId === a.id);
   const state = kind === 'idle' ? '' : syncText(kind, status);
-  const label = [a.displayName, unread ? `${unread} unread` : '', state, outbox ? `${outbox} in Outbox` : '', scheduled ? `${scheduled} scheduled` : '', snoozed ? `${snoozed} snoozed` : '']
+  const label = [a.displayName, unread ? `${unread} unread` : '', a.inUnified ? '' : 'muted in All inboxes', state, outbox ? `${outbox} in Outbox` : '', scheduled ? `${scheduled} scheduled` : '', snoozed ? `${snoozed} snoozed` : '']
     .filter(Boolean)
     .join(', ');
   const open = () =>
@@ -399,7 +400,9 @@ function RailAccount({
     if (outbox > 0) items.push({ label: `Outbox (${outbox})`, icon: 'send', onSelect: () => useUi.getState().setView({ kind: 'outbox' }) });
     if (scheduled > 0) items.push({ label: `Scheduled (${scheduled})`, icon: 'clock', onSelect: () => useUi.getState().setView({ kind: 'scheduled', accountId: a.id }) });
     if (snoozed > 0) items.push({ label: `Snoozed (${snoozed})`, icon: 'alarm', onSelect: () => useUi.getState().setView({ kind: 'snoozed', accountId: a.id }) });
-    if (items.length) openMenuAt(el, items);
+    if (items.length) items.push('sep');
+    items.push({ label: muteMenuLabel(a), icon: 'bell-off', onSelect: () => void toggleAccountMute(a) });
+    openMenuAt(el, items);
   };
   return (
     <button
@@ -424,6 +427,11 @@ function RailAccount({
     >
       <AccountAvatar color={color} letter={badgeOf(a)} size={24} />
       {unread > 0 ? <span className="udot" /> : null}
+      {!a.inUnified ? (
+        <span className="mglyph" aria-hidden="true">
+          <Icon name="bell-off" />
+        </span>
+      ) : null}
       {kind !== 'idle' ? (
         <span className="rglyph" aria-hidden="true">
           <SyncGlyph accountId={a.id} />
@@ -506,6 +514,7 @@ function AccountBlock({
       icon: 'gear',
       onSelect: () => useUi.getState().openSettings('accounts', a.id),
     },
+    { label: muteMenuLabel(a), icon: 'bell-off', onSelect: () => void toggleAccountMute(a) },
     ...(kind === 'auth'
       ? ([
           {
@@ -686,7 +695,7 @@ function AccountBlock({
         aria-level={1}
         aria-expanded={expanded}
         aria-selected={false}
-        aria-label={`${a.displayName}${unread ? `, ${unread} unread` : ''}`}
+        aria-label={`${a.displayName}${unread ? `, ${unread} unread` : ''}${a.inUnified ? '' : ', muted in All inboxes'}`}
         tabIndex={0}
         data-nav
         className="srow inset-focus"
@@ -719,6 +728,11 @@ function AccountBlock({
         </span>
         <AccountAvatar color={color} letter={badgeOf(a)} />
         <span className="nm">{a.displayName}</span>
+        {!a.inUnified ? (
+          <span className="muted-ic" title="Muted in All inboxes" role="img" aria-label="Muted in All inboxes">
+            <Icon name="bell-off" />
+          </span>
+        ) : null}
         <SyncGlyph accountId={a.id} />
         {unread > 0 ? <span className="cnt">{fmtCount(unread)}</span> : null}
       </div>

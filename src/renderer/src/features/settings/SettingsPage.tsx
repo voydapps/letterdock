@@ -374,6 +374,15 @@ function AccountSettings({ accountId }: { accountId: string }) {
         label="Check this account for new mail"
         onChange={(v) => void save({ enabled: v })}
       />
+      <Checkbox
+        checked={account.inUnified}
+        label="Include in All inboxes"
+        onChange={(v) => void save({ inUnified: v })}
+      />
+      <p className="hint indent">
+        Unchecked: this account's mail stays in its own folders but not in All inboxes, Unread or Flagged. It does not
+        count in the unread badge and sends no notifications.
+      </p>
 
       <h2>NOTIFICATIONS</h2>
       <Checkbox

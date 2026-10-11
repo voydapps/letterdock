@@ -32,6 +32,7 @@ import {
 import { canPinHere } from '../../lib/pinRules';
 import { printOpenMessage } from '../../lib/print';
 import { toast } from '../../store/toasts';
+import { muteMenuLabel, toggleAccountMute } from '../../lib/accountMute';
 import { canMakeRuleFrom, createRuleFromSender } from '../rules/ruleActions';
 import { syncAll } from '../shell/SyncPopover';
 import { toggleSidebar } from '../sidebar/SidebarToggle';
@@ -267,6 +268,15 @@ export function buildCommands(): Command[] {
   out.push({ id: 'addAccount', label: 'Add account', icon: 'plus', hint: 'Ctrl+Shift+A', run: () => useUi.getState().set({ addAccount: {} }) });
   out.push({ id: 'cheatsheet', label: 'Show keyboard shortcuts', icon: 'key', hint: 'Ctrl+/', run: () => useUi.getState().set({ cheatsheetOpen: true }) });
   if (app.accounts.length > 0) out.push(...goCommands(), ...folderCommands());
+  for (const a of app.accounts) {
+    out.push({
+      id: `mute:acct:${a.id}`,
+      label: `${muteMenuLabel(a)}: ${a.displayName}`,
+      icon: 'bell-off',
+      account: a,
+      run: () => void toggleAccountMute(a),
+    });
+  }
   return out;
 }
 

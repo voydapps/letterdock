@@ -554,6 +554,15 @@ svg.i.fill {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.srow .muted-ic {
+  flex: none;
+  display: inline-flex;
+  color: var(--t3);
+}
+.srow .muted-ic svg {
+  width: 14px;
+  height: 14px;
+}
 .srow .more {
   opacity: 0;
 }
@@ -2703,6 +2712,23 @@ kbd {
   border-radius: 50%;
   background: var(--bg-app);
   pointer-events: none;
+}
+.rail-tile .mglyph {
+  position: absolute;
+  left: 1px;
+  bottom: 1px;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-app);
+  color: var(--t3);
+  pointer-events: none;
+}
+.rail-tile .mglyph svg {
+  width: 10px;
+  height: 10px;
 }
 .rail-tile .rglyph .sync {
   transform: scale(0.75);

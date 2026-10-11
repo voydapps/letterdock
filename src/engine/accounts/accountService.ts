@@ -209,6 +209,7 @@ export class AccountService {
       enabled: true,
       sortOrder: this.ctx.accounts.nextSortOrder(),
       badge: normalizeBadge(input.badge) ?? defaultBadge(displayName),
+      inUnified: true,
     };
     if (oauth) {
       // Main moves the tokens from the sign-in session to this account.
@@ -259,6 +260,13 @@ export class AccountService {
     } else if (days) {
       // Wider window: the session fetches the older headers once it can reach the server.
       setWidenPending(this.ctx, next.id, true);
+    }
+    if (p.inUnified !== undefined && p.inUnified !== cur.inUnified) {
+      // The unified views, their counts and the badge change at once. The account's Inbox is
+      // reported as changed so an open unified list reloads (its own folders look the same).
+      const inbox = this.ctx.folders.rowByRole(next.id, 'inbox');
+      this.ctx.hub.changed({ folderIds: inbox ? [inbox.id] : [] });
+      this.ctx.hub.touchCounts();
     }
     if (connectionChanged) await this.sessions.applyUpdate(next);
     else if (days) {

@@ -605,7 +605,9 @@ export class AccountSession {
             this.ctx.log.warn({ err: String((e as Error)?.message ?? e) }, 'light features failed on new mail'),
           );
           const fresh2 = newMailToAnnounce(this.ctx, fresh, res);
-          if (fresh2.length > 0) {
+          // An account hidden from All inboxes sends no new-mail notifications. Read fresh: this.account
+          // is a copy that a settings change does not always replace.
+          if (fresh2.length > 0 && this.ctx.accounts.get(this.account.id)?.inUnified !== false) {
             this.ctx.hub.emit({
               type: 'notify:newMail',
               accountId: this.account.id,

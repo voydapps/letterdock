@@ -59,6 +59,7 @@ const accounts: Account[] = [
   enabled: true,
   sortOrder: i,
   badge: name![0]!.toUpperCase(),
+  inUnified: true,
 }));
 
 let fid = 1;
@@ -819,6 +820,8 @@ function scopeFilter(scope: { kind: string; folderId?: number; accountId?: strin
   return (m: MessageHeader) => {
     const role = folderOf(m.folderId).role;
     if (m.snoozedUntil) return false; // snoozed mail is hidden (DESIGN-SPEC 3.13.2)
+    // Accounts hidden from All inboxes (Account.inUnified false) are left out of the unified views only.
+    if (scope.kind.startsWith('unified') && accounts.find((a) => a.id === m.accountId)?.inUnified === false) return false;
     if (scope.kind === 'folder') return m.folderId === scope.folderId;
     if (scope.kind === 'accountInbox') return m.accountId === scope.accountId && role === 'inbox';
     if (scope.kind === 'unifiedFlagged') return m.flagged && role !== 'trash' && role !== 'junk';
@@ -935,12 +938,17 @@ function searchLocal(query: string, accountId?: string) {
   };
 }
 
+/** Unread count of the Inboxes that are in All inboxes (sidebar number, tray, taskbar badge). */
+function unifiedUnread(): number {
+  return folders.filter((f) => f.role === 'inbox' && accounts.find((a) => a.id === f.accountId)?.inUnified !== false).reduce((n, f) => n + f.unreadCount, 0);
+}
+
 function changed(partial: { updated?: number[]; removed?: number[]; added?: number[]; folderIds: number[] }): void {
   recount();
   emit({ type: 'messages:changed', added: partial.added ?? [], updated: partial.updated ?? [], removed: partial.removed ?? [], folderIds: partial.folderIds });
   emit({
     type: 'counts:changed',
-    unifiedInboxUnread: folders.filter((f) => f.role === 'inbox').reduce((n, f) => n + f.unreadCount, 0),
+    unifiedInboxUnread: unifiedUnread(),
     perFolder: folders.map((f) => ({ folderId: f.id, unread: f.unreadCount, total: f.totalCount })),
   });
 }
@@ -1002,8 +1010,14 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
     case 'accounts.update': {
       const a = accounts.find((x) => x.id === r!.accountId);
       if (!a) return err('NOT_FOUND', 'Account not found.');
+      const wasIn = a.inUnified;
       Object.assign(a, r!.patch);
       emit({ type: 'accounts:changed' });
+      if (a.inUnified !== wasIn) {
+        // Same as the engine: an open unified list reloads and the unread number follows.
+        const inbox = folders.find((f) => f.accountId === a.id && f.role === 'inbox');
+        changed({ folderIds: inbox ? [inbox.id] : [] });
+      }
       return delay(a);
     }
     case 'accounts.updateCredentials': {
@@ -1052,7 +1066,7 @@ function handle(channel: IpcChannel, req: unknown): Promise<unknown> {
       return delay(folders);
     case 'folders.counts':
       return delay({
-        unifiedInboxUnread: folders.filter((f) => f.role === 'inbox').reduce((n, f) => n + f.unreadCount, 0),
+        unifiedInboxUnread: unifiedUnread(),
         perFolder: folders.map((f) => ({ folderId: f.id, unread: f.unreadCount, total: f.totalCount })),
       });
     case 'folders.count': {

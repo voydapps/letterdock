@@ -69,6 +69,12 @@ export interface Account {
   sortOrder: number;
   /** 1-2 characters shown in the account avatar tile (DESIGN-SPEC 1.7). Default: first letter. */
   badge: string;
+  /**
+   * "Include in All inboxes" (default true). False = "Mute in All inboxes": the account's Inbox
+   * mail is left out of All inboxes, the unified Unread and Flagged views, the unread badge/tray
+   * count and new-mail notifications. Its own folders and search are not affected.
+   */
+  inUnified: boolean;
 }
 
 export type ConnectionState =
@@ -423,6 +429,7 @@ export interface UpdateAccountReq {
       | 'enabled'
       | 'sortOrder'
       | 'badge'
+      | 'inUnified'
       | 'imap'
       | 'smtp'
       | 'username'

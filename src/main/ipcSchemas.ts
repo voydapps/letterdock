@@ -172,6 +172,7 @@ export const schemas: Schemas = {
         enabled: z.boolean(),
         sortOrder: z.number().int(),
         badge: str(4),
+        inUnified: z.boolean(),
         imap: endpoint,
         smtp: endpoint,
         username: str(320),

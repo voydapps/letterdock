@@ -56,6 +56,7 @@ export function makeAccount(over: Partial<Account> = {}): Account {
     enabled: true,
     sortOrder: 0,
     badge: 'M',
+    inUnified: true,
     ...over,
   };
 }

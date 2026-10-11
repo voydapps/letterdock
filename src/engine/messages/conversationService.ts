@@ -25,6 +25,7 @@ import type {
 import type { Statement } from 'better-sqlite3';
 import { AppException } from '../../shared/errors';
 import type { EngineContext } from '../context';
+import { excludedFromUnified } from '../db/repos/accountRepo';
 import { rowToHeader, scopeFilter, type MessageRow } from '../db/repos/messageRepo';
 import type { ActionService } from './actionService';
 import type { MessageService } from './messageService';
@@ -39,6 +40,8 @@ interface Resolved {
   /** WHERE for the messages that may belong to a row of the view. */
   inclusion: string;
   params: Record<string, unknown>;
+  /** Accounts hidden from All inboxes (only the unified scopes use it). */
+  excluded: string[];
   /** Folder-only view (everything except Inbox-like views). */
   folderOnly: boolean;
 }
@@ -69,14 +72,16 @@ export class ConversationService {
       // The Inbox of one account behaves like every Inbox view.
       if (f.role === 'inbox') eff = { kind: 'accountInbox', accountId: f.account_id };
     }
-    const member = scopeFilter(eff, unreadOnly);
-    const base = scopeFilter(eff, false);
+    const excluded = excludedFromUnified(this.ctx.db);
+    const member = scopeFilter(eff, unreadOnly, excluded);
+    const base = scopeFilter(eff, false, excluded);
     if (eff.kind === 'folder') {
       return {
         scope: eff,
         memberWhere: member.where,
         inclusion: 'm.flag_deleted = 0 AND m.snoozed_until IS NULL AND m.folder_id = :folderId',
         params: member.params,
+        excluded,
         folderOnly: true,
       };
     }
@@ -86,6 +91,7 @@ export class ConversationService {
       memberWhere: member.where,
       inclusion: `m.flag_deleted = 0 AND m.snoozed_until IS NULL AND ((f.role IN (${roles}) AND m.flag_draft = 0) OR (${base.where}))`,
       params: member.params,
+      excluded,
       folderOnly: false,
     };
   }
@@ -95,6 +101,7 @@ export class ConversationService {
     if (row.flag_deleted === 1 || row.snoozed_until !== null) return false;
     if (unreadOnly && row.flag_seen === 1) return false;
     const s = r.scope;
+    if (s.kind.startsWith('unified') && r.excluded.includes(row.account_id)) return false;
     switch (s.kind) {
       case 'unifiedInbox':
         return row.frole === 'inbox';

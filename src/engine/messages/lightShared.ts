@@ -5,6 +5,7 @@ import type { LightTargets, ListScope, MessageId, UndoRes } from '../../shared/i
 import { UNDO_WINDOW_MS } from '../../shared/ipc';
 import { AppException } from '../../shared/errors';
 import type { EngineContext } from '../context';
+import { excludedFromUnified } from '../db/repos/accountRepo';
 import { scopeFilter, type MessageRow } from '../db/repos/messageRepo';
 
 export type LightRow = MessageRow & { frole: string | null };
@@ -56,7 +57,7 @@ export function resolveTargets(
     if (r && r.flag_deleted === 0 && r.flag_draft === 0) out.set(r.id, r);
   }
   if (t.threadIds && t.threadIds.length > 0) {
-    const f = t.scope ? scopeFilter(t.scope as ListScope, false) : null;
+    const f = t.scope ? scopeFilter(t.scope as ListScope, false, excludedFromUnified(ctx.db)) : null;
     const scopeSql = f
       ? f.where.replace(opts.includeSnoozed ? /\s*AND m\.snoozed_until IS NULL/ : /$^/, '')
       : "m.flag_deleted = 0 AND (f.role IS NULL OR f.role = 'inbox')";

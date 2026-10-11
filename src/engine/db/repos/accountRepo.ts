@@ -1,4 +1,5 @@
 import type { Account, Security } from '../../../shared/ipc';
+import type { Statement } from 'better-sqlite3';
 import type { Db } from '../connection';
 import { hasEmailPlaceholder, resolveUsername } from '../../../shared/providers';
 
@@ -22,6 +23,7 @@ interface AccountRow {
   enabled: number;
   sort_order: number;
   badge: string | null;
+  in_unified: number;
 }
 
 /** First letter of the name, upper case (DESIGN-SPEC 1.7). */
@@ -47,7 +49,23 @@ function toAccount(r: AccountRow): Account {
     enabled: r.enabled === 1,
     sortOrder: r.sort_order,
     badge: r.badge ?? defaultBadge(r.display_name || r.email),
+    inUnified: r.in_unified !== 0,
   };
+}
+
+const excludedStmts = new WeakMap<Db, Statement>();
+
+/**
+ * Ids of the accounts hidden from All inboxes (`Account.inUnified` false). Usually empty, so the
+ * unified queries then stay exactly as they were. The account table is tiny.
+ */
+export function excludedFromUnified(db: Db): string[] {
+  let stmt = excludedStmts.get(db);
+  if (!stmt) {
+    stmt = db.prepare('SELECT id FROM account WHERE in_unified = 0 ORDER BY id');
+    excludedStmts.set(db, stmt);
+  }
+  return (stmt.all() as { id: string }[]).map((r) => r.id);
 }
 
 export class AccountRepo {
@@ -79,8 +97,8 @@ export class AccountRepo {
       .prepare(
         `INSERT INTO account (id,email,display_name,color,provider,auth_type,oauth_provider,
           imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,username,
-          sync_days,signature,enabled,sort_order,created_at,badge)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          sync_days,signature,enabled,sort_order,created_at,badge,in_unified)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         a.id,
@@ -103,6 +121,7 @@ export class AccountRepo {
         a.sortOrder,
         createdAt,
         a.badge,
+        a.inUnified === false ? 0 : 1,
       );
   }
 
@@ -112,7 +131,7 @@ export class AccountRepo {
     const n: Account = { ...cur, ...p, imap: p.imap ?? cur.imap, smtp: p.smtp ?? cur.smtp };
     this.db
       .prepare(
-        `UPDATE account SET display_name=?, color=?, signature=?, sync_days=?, enabled=?, sort_order=?, badge=?,
+        `UPDATE account SET display_name=?, color=?, signature=?, sync_days=?, enabled=?, sort_order=?, badge=?, in_unified=?,
           imap_host=?, imap_port=?, imap_security=?, smtp_host=?, smtp_port=?, smtp_security=?, username=?
          WHERE id=?`,
       )
@@ -124,6 +143,7 @@ export class AccountRepo {
         n.enabled ? 1 : 0,
         n.sortOrder,
         n.badge,
+        n.inUnified ? 1 : 0,
         n.imap.host,
         n.imap.port,
         n.imap.security,

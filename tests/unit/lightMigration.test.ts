@@ -45,3 +45,25 @@ describe('migration 013 (light features)', () => {
     expect(sql('idx_msg_pinned')).toMatch(/WHERE pinned_at IS NOT NULL/);
   });
 });
+
+describe('migration 014 (account.in_unified)', () => {
+  it('upgrades a database from 013: every existing account stays in All inboxes', () => {
+    const before = MIGRATIONS.filter((m) => m.version < 14);
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, before);
+    db.exec(`INSERT INTO account (id,email,display_name,provider,auth_type,imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,username,created_at)
+             VALUES ('a','a@x.com','A','generic','password','h',993,'ssl','h',465,'ssl','a',1),
+                    ('b','b@x.com','B','generic','password','h',993,'ssl','h',465,'ssl','b',2);
+             INSERT INTO folder (id,account_id,path,name,role) VALUES (1,'a','INBOX','INBOX','inbox');
+             INSERT INTO message (account_id,folder_id,uid,subject,date_ms,internal_ms) VALUES ('a',1,1,'old mail',5,5);`);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
+
+    expect(migrate(db)).toBe(MIGRATIONS.length);
+    expect(db.prepare('SELECT id, in_unified FROM account ORDER BY id').all()).toEqual([
+      { id: 'a', in_unified: 1 },
+      { id: 'b', in_unified: 1 },
+    ]);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM message').get()).toEqual({ n: 1 });
+  });
+});

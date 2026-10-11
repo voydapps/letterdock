@@ -232,7 +232,8 @@ export class SnoozeService {
     this.ctx.hub.changed({ folderIds, added: rows.map((r) => r.id) });
     for (const a of accountsOf(rows)) {
       this.ctx.hub.emit({ type: 'snooze:changed', accountId: a });
-      if (!notify) continue;
+      // No "Snoozed mail is back" notification for an account hidden from All inboxes.
+      if (!notify || this.ctx.accounts.get(a)?.inUnified === false) continue;
       const ids = rows.filter((r) => r.account_id === a).map((r) => r.id).slice(0, NOTIFY_MAX);
       const messages: MessageHeader[] = this.ctx.messages.headers(ids);
       if (messages.length > 0) this.ctx.hub.emit({ type: 'snooze:returned', accountId: a, messages });

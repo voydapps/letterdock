@@ -133,6 +133,7 @@ export function buildDemo(now: number): Demo {
     enabled: true,
     sortOrder: i,
     badge: name[0]!,
+    inUnified: true,
   }));
 
   let fid = 1;

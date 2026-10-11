@@ -1,5 +1,6 @@
 import type { Folder, FolderId, FolderRole } from '../../../shared/ipc';
 import type { Db } from '../connection';
+import { excludedFromUnified } from './accountRepo';
 
 export interface FolderRow {
   id: number;
@@ -234,9 +235,18 @@ export class FolderRepo {
     const per = this.db
       .prepare('SELECT id, unread_count, total_count FROM folder WHERE selectable=1')
       .all() as { id: number; unread_count: number; total_count: number }[];
-    const u = this.db
-      .prepare("SELECT COALESCE(SUM(unread_count),0) AS n FROM folder WHERE role='inbox'")
-      .get() as { n: number };
+    // Accounts hidden from All inboxes do not count (sidebar number, tray, taskbar badge).
+    const ex = excludedFromUnified(this.db);
+    const u = (
+      ex.length === 0
+        ? this.db.prepare("SELECT COALESCE(SUM(unread_count),0) AS n FROM folder WHERE role='inbox'").get()
+        : this.db
+            .prepare(
+              `SELECT COALESCE(SUM(unread_count),0) AS n FROM folder WHERE role='inbox'
+                AND account_id NOT IN (${ex.map(() => '?').join(',')})`,
+            )
+            .get(...ex)
+    ) as { n: number };
     return {
       unifiedInboxUnread: u.n,
       perFolder: per.map((p) => ({ folderId: p.id, unread: p.unread_count, total: p.total_count })),

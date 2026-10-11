@@ -3,6 +3,7 @@
 ## 0.6.6 - 2026-10-11
 ### New
 - Unread count on the taskbar: the Letterdock button now shows a red number with your unread mail, and the tray icon gets a red dot. You can turn each one off in Settings, Notifications.
+- Hide an account from All inboxes: right-click the account, or use its settings. Its mail stays in its own folders, and it does not count in the unread badge or send notifications.
 
 ## 0.6.5 - 2026-10-11
 ### Fixed

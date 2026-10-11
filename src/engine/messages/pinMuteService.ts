@@ -17,6 +17,7 @@ import { MAX_MUTED_PER_ACCOUNT, MAX_PINS_PER_FOLDER } from '../../shared/ipc';
 import { AppException } from '../../shared/errors';
 import type { EngineContext } from '../context';
 import type { FolderRow } from '../db/repos/folderRepo';
+import { excludedFromUnified } from '../db/repos/accountRepo';
 import { scopeFilter, type MessageRow } from '../db/repos/messageRepo';
 import type { ActionService } from './actionService';
 import { foldersOf, resolveTargets, type LightRow, type LightUndo } from './lightShared';
@@ -142,7 +143,7 @@ export class PinMuteService {
   private archivable(t: { accountId: AccountId; threadId: string; rows: LightRow[] }, req: MuteSetReq): LightRow[] {
     let rows: LightRow[];
     if (req.scope) {
-      const f = scopeFilter(req.scope, false);
+      const f = scopeFilter(req.scope, false, excludedFromUnified(this.ctx.db));
       rows = this.ctx.db
         .prepare(
           `SELECT m.*, f.role AS frole FROM message m JOIN folder f ON f.id = m.folder_id

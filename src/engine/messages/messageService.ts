@@ -68,7 +68,7 @@ export class MessageService {
         break;
       case 'unifiedInbox':
       case 'unifiedUnread':
-        sql = `SELECT 1 FROM folder WHERE role = 'inbox' AND ${base}`;
+        sql = `SELECT 1 FROM folder WHERE role = 'inbox' AND account_id NOT IN (SELECT id FROM account WHERE in_unified = 0) AND ${base}`;
         break;
       default:
         return false;
@@ -389,6 +389,7 @@ export class MessageService {
       case 'unifiedUnread':
         return this.ctx.accounts
           .list()
+          .filter((a) => a.inUnified)
           .map((a) => this.ctx.folders.rowByRole(a.id, 'inbox')?.id)
           .filter((id): id is number => id !== undefined);
       default:

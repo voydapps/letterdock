@@ -15,6 +15,7 @@ import { ftsText } from '../../messages/bodyUtils';
 import { normalizeSubject } from '../../messages/threading';
 import type { Statement } from 'better-sqlite3';
 import type { Db } from '../connection';
+import { excludedFromUnified } from './accountRepo';
 import { ThreadRepo, type ThreadKey } from './threadRepo';
 
 export interface FlagSet {
@@ -206,12 +207,25 @@ export interface ScopeFilter {
   params: Record<string, unknown>;
 }
 
-/** Translate a ListScope to SQL fragments (all queries alias message as m, folder as f). */
-export function scopeFilter(scope: ListScope, unreadOnly: boolean): ScopeFilter {
+/**
+ * Translate a ListScope to SQL fragments (all queries alias message as m, folder as f).
+ * `excluded`: accounts hidden from All inboxes (Account.inUnified false, see `excludedFromUnified`).
+ * The three unified scopes leave their mail out; every other scope ignores it. With none excluded
+ * the SQL text is the same as before, so the query plans do not change.
+ */
+export function scopeFilter(
+  scope: ListScope,
+  unreadOnly: boolean,
+  excluded: readonly string[] = [],
+): ScopeFilter {
   const base = 'FROM message m JOIN folder f ON f.id = m.folder_id';
   // Snoozed messages are hidden everywhere (DESIGN-SPEC 3.13.2).
   const conds = ['m.flag_deleted = 0', 'm.snoozed_until IS NULL'];
   const params: Record<string, unknown> = {};
+  if (excluded.length > 0 && scope.kind.startsWith('unified')) {
+    conds.push(`m.account_id NOT IN (${excluded.map((_, i) => `:ux${i}`).join(',')})`);
+    excluded.forEach((id, i) => (params[`ux${i}`] = id));
+  }
   switch (scope.kind) {
     case 'unifiedInbox':
       conds.push("f.role = 'inbox'");
@@ -576,7 +590,7 @@ export class MessageRepo {
     const limit = Math.min(Math.max(req.limit || 50, 1), 200);
     const sort = req.sort ?? 'date';
     const asc = (req.direction ?? (sort === 'date' ? 'desc' : 'asc')) === 'asc';
-    const f = scopeFilter(req.scope, !!req.unreadOnly);
+    const f = scopeFilter(req.scope, !!req.unreadOnly, excludedFromUnified(this.db));
     const params: Record<string, unknown> = { ...f.params, limit: limit + 1 };
     let where = f.where;
     let order: string;
@@ -660,9 +674,23 @@ export class MessageRepo {
               .prepare(`SELECT COALESCE(SUM(${col}),0) AS n FROM folder WHERE role = 'inbox' AND account_id = ?`)
               .get(s.accountId)
           : s.kind === 'unifiedInbox' || s.kind === 'unifiedUnread'
-            ? this.db.prepare(`SELECT COALESCE(SUM(${col}),0) AS n FROM folder WHERE role = 'inbox'`).get()
+            ? this.unifiedCount(col)
             : undefined;
     return row ? (row as { n: number }).n : null;
+  }
+
+  /** Sum of a folder count over the Inboxes of the accounts that are in All inboxes. */
+  private unifiedCount(col: 'unread_count' | 'total_count'): { n: number } {
+    const ex = excludedFromUnified(this.db);
+    if (ex.length === 0) {
+      return this.db.prepare(`SELECT COALESCE(SUM(${col}),0) AS n FROM folder WHERE role = 'inbox'`).get() as { n: number };
+    }
+    return this.db
+      .prepare(
+        `SELECT COALESCE(SUM(${col}),0) AS n FROM folder WHERE role = 'inbox'
+          AND account_id NOT IN (${ex.map(() => '?').join(',')})`,
+      )
+      .get(...ex) as { n: number };
   }
 
   private stmtAnyPinned?: Statement;
@@ -935,7 +963,7 @@ export class MessageRepo {
           .all(scope.accountId) as { id: number }[]
       ).map((r) => r.id);
     }
-    const f = scopeFilter(scope, true);
+    const f = scopeFilter(scope, true, excludedFromUnified(this.db));
     return (
       this.db.prepare(`SELECT m.id ${f.from} WHERE ${f.where} AND m.uid > 0`).all(f.params) as {
         id: number;

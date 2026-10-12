@@ -18,11 +18,20 @@ function trimPartialQp(bytes: Buffer): Buffer {
   let end = bytes.length;
   // "=" or "=X" at the very end (X = hex digit).
   if (end >= 1 && bytes[end - 1] === 0x3d) end -= 1;
-  else if (end >= 2 && bytes[end - 2] === 0x3d && /[0-9a-f]/i.test(String.fromCharCode(bytes[end - 1]))) end -= 2;
+  else if (
+    end >= 2 &&
+    bytes[end - 2] === 0x3d &&
+    /[0-9a-f]/i.test(String.fromCharCode(bytes[end - 1]))
+  )
+    end -= 2;
   return end === bytes.length ? bytes : bytes.subarray(0, end);
 }
 
-export async function snippetOf(part: SnippetPart, bytes: Buffer, truncated = false): Promise<string> {
+export async function snippetOf(
+  part: SnippetPart,
+  bytes: Buffer,
+  truncated = false,
+): Promise<string> {
   const qp = part.encoding.toLowerCase() === 'quoted-printable';
   const body = truncated && qp ? trimPartialQp(bytes) : bytes;
   const head =
@@ -71,7 +80,8 @@ async function peekGroup(
       const truncated = buf.length >= maxLength;
       const snippet = await snippetOf(part, buf, truncated).catch(() => '');
       if (snippet) got.push({ id, uid: r.uid, snippet });
-      else if (truncated && part.type === 'text/html' && maxLength < PEEK_BYTES_HTML) again.push(r.uid);
+      else if (truncated && part.type === 'text/html' && maxLength < PEEK_BYTES_HTML)
+        again.push(r.uid);
       else empty.push(r.uid);
     }
     pending = again;
@@ -105,7 +115,14 @@ export async function fillSnippets(
   for (const [key, g] of byKey) {
     try {
       // Per-message encoding/charset can differ inside one group; use that message's own part.
-      const res = await peekGroup(client, key, g.uids, (uid) => parts.get(uid) ?? g.part, g.part.type === 'text/html', idByUid);
+      const res = await peekGroup(
+        client,
+        key,
+        g.uids,
+        (uid) => parts.get(uid) ?? g.part,
+        g.part.type === 'text/html',
+        idByUid,
+      );
       for (const r of res.got) out.push({ id: r.id, snippet: r.snippet });
       for (const uid of res.empty) {
         const fb = parts.get(uid)?.fallback;

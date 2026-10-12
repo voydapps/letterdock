@@ -8,7 +8,12 @@ import { MIGRATIONS } from '../../src/engine/db/migrations';
 import { fillSnippets, snippetOf } from '../../src/engine/imap/snippets';
 import type { FetchedLike, SnippetPart } from '../../src/engine/imap/parse';
 import { pickSnippetPart } from '../../src/engine/imap/parse';
-import { looksBrokenSnippet, makeSnippet, stripHtml, stripJsonBlobs } from '../../src/engine/messages/bodyUtils';
+import {
+  looksBrokenSnippet,
+  makeSnippet,
+  stripHtml,
+  stripJsonBlobs,
+} from '../../src/engine/messages/bodyUtils';
 import { SnippetRepair } from '../../src/engine/messages/snippetRepair';
 import { header, makeCtx } from '../helpers';
 
@@ -17,18 +22,27 @@ const MJ_JSON =
   '"children":[{"tagName":"mj-text","attributes":{"font-size":"14px"},"content":"x {y} \\"z\\""}]}';
 const REAL = 'Quali storie ti faranno venire i brividi? Scopri le novità di Halloween 🕯';
 
-const plain = (): SnippetPart => ({ part: '1', type: 'text/plain', encoding: '7bit', charset: 'utf-8' });
+const plain = (): SnippetPart => ({
+  part: '1',
+  type: 'text/plain',
+  encoding: '7bit',
+  charset: 'utf-8',
+});
 
 describe('stripJsonBlobs', () => {
   it('removes a balanced object, strings with braces and escaped quotes included', () => {
     expect(stripJsonBlobs(`Hello ${MJ_JSON} world`).replace(/\s+/g, ' ')).toBe('Hello world');
   });
   it('drops a blob that was cut off, to the end', () => {
-    expect(stripJsonBlobs('Hi {"tagName":"mj-global-style","attributes":{"h1:col').trim()).toBe('Hi');
+    expect(stripJsonBlobs('Hi {"tagName":"mj-global-style","attributes":{"h1:col').trim()).toBe(
+      'Hi',
+    );
   });
   it('removes arrays of objects and leaves normal braces and quotes alone', () => {
     expect(stripJsonBlobs('A [{"a":1},{"b":2}] B').replace(/\s+/g, ' ')).toBe('A B');
-    expect(stripJsonBlobs('He said "hi" {not json} and [1, 2]')).toBe('He said "hi" {not json} and [1, 2]');
+    expect(stripJsonBlobs('He said "hi" {not json} and [1, 2]')).toBe(
+      'He said "hi" {not json} and [1, 2]',
+    );
   });
 });
 
@@ -66,18 +80,28 @@ describe('snippet from HTML with code in it', () => {
     expect(makeSnippet(null, doc)).toBe('Preheader: sconto del 20% & spedizione gratis Titolo');
   });
   it('decodes entities and keeps emoji', () => {
-    expect(makeSnippet(null, '<p>Caff&#232; &amp; t&#xE8; &#x1F600; &lt;3</p>')).toBe('Caffè & tè 😀 <3');
+    expect(makeSnippet(null, '<p>Caff&#232; &amp; t&#xE8; &#x1F600; &lt;3</p>')).toBe(
+      'Caffè & tè 😀 <3',
+    );
   });
   it('truncated partial HTML (cut in a tag, a comment, a style)', () => {
-    expect(makeSnippet(null, '<body><p>Visible text here</p><a href="https://example.com/very/lo')).toBe('Visible text here');
-    expect(makeSnippet(null, '<body><p>Visible text here</p><!-- tracking {"a":1')).toBe('Visible text here');
-    expect(makeSnippet(null, '<body><p>Visible text here</p><style>.a{color:')).toBe('Visible text here');
+    expect(
+      makeSnippet(null, '<body><p>Visible text here</p><a href="https://example.com/very/lo'),
+    ).toBe('Visible text here');
+    expect(makeSnippet(null, '<body><p>Visible text here</p><!-- tracking {"a":1')).toBe(
+      'Visible text here',
+    );
+    expect(makeSnippet(null, '<body><p>Visible text here</p><style>.a{color:')).toBe(
+      'Visible text here',
+    );
   });
 });
 
 describe('snippet from the plain-text part', () => {
   it('real text is used as it is', () => {
-    expect(makeSnippet(`${REAL}\r\n\r\nSee you soon.`, '<p>other</p>')).toBe(`${REAL} See you soon.`);
+    expect(makeSnippet(`${REAL}\r\n\r\nSee you soon.`, '<p>other</p>')).toBe(
+      `${REAL} See you soon.`,
+    );
   });
   it('a plain part that is only JSON falls through to the HTML text', () => {
     expect(makeSnippet(MJ_JSON, `<body><p>${REAL}</p></body>`)).toBe(REAL);
@@ -87,9 +111,12 @@ describe('snippet from the plain-text part', () => {
     expect(makeSnippet(MJ_JSON.slice(0, 90), null)).toBe('');
   });
   it('a "plain" part that is really HTML source is read as HTML', () => {
-    expect(makeSnippet('<html><head><style>.a{b:c}</style></head><body><p>Hello there</p></body></html>', null)).toBe(
-      'Hello there',
-    );
+    expect(
+      makeSnippet(
+        '<html><head><style>.a{b:c}</style></head><body><p>Hello there</p></body></html>',
+        null,
+      ),
+    ).toBe('Hello there');
   });
   it('snippetOf on a plain part with JSON first and real text after', async () => {
     expect(await snippetOf(plain(), Buffer.from(`${MJ_JSON}\r\n\r\n${REAL}`))).toBe(REAL);
@@ -102,7 +129,10 @@ describe('fillSnippets: plain part is code, the HTML part is used', () => {
     db.exec(`INSERT INTO account (id,email,display_name,provider,auth_type,imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,username,created_at)
              VALUES ('acc-1','a@x.com','A','generic','password','h',993,'ssl','h',465,'ssl','a',1);
              INSERT INTO folder (id,account_id,path,name,role) VALUES (1,'acc-1','INBOX','INBOX','inbox');`);
-    const { added } = ctx.messages.upsertHeaders([header({ folderId: 1, uid: 1 }), header({ folderId: 1, uid: 2 })]);
+    const { added } = ctx.messages.upsertHeaders([
+      header({ folderId: 1, uid: 1 }),
+      header({ folderId: 1, uid: 2 }),
+    ]);
     const struct = {
       type: 'multipart/alternative',
       childNodes: [
@@ -111,7 +141,10 @@ describe('fillSnippets: plain part is code, the HTML part is used', () => {
       ],
     };
     expect(pickSnippetPart(struct as never)?.fallback?.part).toBe('2');
-    const fetched = [1, 2].map((uid) => ({ uid, bodyStructure: struct })) as unknown as FetchedLike[];
+    const fetched = [1, 2].map((uid) => ({
+      uid,
+      bodyStructure: struct,
+    })) as unknown as FetchedLike[];
     const bodies: Record<string, Record<number, string>> = {
       '1': { 1: MJ_JSON, 2: 'Plain real text for two' },
       '2': { 1: `<body><p>${REAL}</p></body>`, 2: '<body><p>unused</p></body>' },
@@ -125,7 +158,10 @@ describe('fillSnippets: plain part is code, the HTML part is used', () => {
           return b ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a];
         });
         asked.push(`${key}:${uids.join('+')}`);
-        return uids.map((uid) => ({ uid, bodyParts: new Map([[key, Buffer.from(bodies[key][uid])]]) }));
+        return uids.map((uid) => ({
+          uid,
+          bodyParts: new Map([[key, Buffer.from(bodies[key][uid])]]),
+        }));
       },
     } as unknown as ImapFlow;
     const idByUid = new Map([
@@ -162,7 +198,9 @@ describe('SnippetRepair and migration 016', () => {
     ins.run(3, 'good', 'Ciao, il tuo ordine è partito', 'none');
     ins.run(4, 'bad cached', MJ_JSON.slice(0, 200), 'cached');
     expect(migrate(db)).toBe(MIGRATIONS.length);
-    const rows = db.prepare('SELECT uid, snippet, snippet_checked AS c FROM message ORDER BY uid').all();
+    const rows = db
+      .prepare('SELECT uid, snippet, snippet_checked AS c FROM message ORDER BY uid')
+      .all();
     expect(rows).toEqual([
       { uid: 1, snippet: '', c: 0 },
       { uid: 2, snippet: '', c: 0 },
@@ -179,15 +217,23 @@ describe('SnippetRepair and migration 016', () => {
       Array.from({ length: n }, (_, i) => header({ folderId: 1, uid: i + 1 })),
     );
     const store = (id: number, text: string | null, html: string | null, snippet: string) =>
-      ctx.messages.saveBody(id, { rawZ: null, text, html, snippet, attachments: [], ftsBodyText: '' }, 1);
+      ctx.messages.saveBody(
+        id,
+        { rawZ: null, text, html, snippet, attachments: [], ftsBodyText: '' },
+        1,
+      );
     added.forEach((id, i) => {
-      if (i % 2 === 0) store(id, MJ_JSON, `<body><p>${REAL} ${i}</p></body>`, MJ_JSON.slice(0, 200));
+      if (i % 2 === 0)
+        store(id, MJ_JSON, `<body><p>${REAL} ${i}</p></body>`, MJ_JSON.slice(0, 200));
       else store(id, `Fine text ${i}`, null, `Fine text ${i}`);
     });
     const repair = new SnippetRepair(ctx);
     repair.start();
     await repair.whenDone();
-    const snips = db.prepare('SELECT id, snippet FROM message ORDER BY id').all() as { id: number; snippet: string }[];
+    const snips = db.prepare('SELECT id, snippet FROM message ORDER BY id').all() as {
+      id: number;
+      snippet: string;
+    }[];
     snips.forEach((r, i) => {
       expect(looksBrokenSnippet(r.snippet)).toBe(false);
       expect(r.snippet).toBe(i % 2 === 0 ? `${REAL} ${i}` : `Fine text ${i}`);
@@ -198,19 +244,30 @@ describe('SnippetRepair and migration 016', () => {
     const again = new SnippetRepair(ctx);
     again.start();
     await again.whenDone();
-    expect((db.prepare('SELECT snippet FROM message WHERE id=?').get(added[0]) as { snippet: string }).snippet).toBe(
-      '{"x":1}',
-    );
+    expect(
+      (db.prepare('SELECT snippet FROM message WHERE id=?').get(added[0]) as { snippet: string })
+        .snippet,
+    ).toBe('{"x":1}');
   });
 
   it('resumes from the saved position and updates the search index copy', async () => {
     const { ctx, db } = makeCtx();
     seed(db);
-    const { added } = ctx.messages.upsertHeaders([header({ folderId: 1, uid: 1 }), header({ folderId: 1, uid: 2 })]);
+    const { added } = ctx.messages.upsertHeaders([
+      header({ folderId: 1, uid: 1 }),
+      header({ folderId: 1, uid: 2 }),
+    ]);
     for (const id of added) {
       ctx.messages.saveBody(
         id,
-        { rawZ: null, text: 'Real words here', html: null, snippet: '{"a":"b"}', attachments: [], ftsBodyText: '' },
+        {
+          rawZ: null,
+          text: 'Real words here',
+          html: null,
+          snippet: '{"a":"b"}',
+          attachments: [],
+          ftsBodyText: '',
+        },
         1,
       );
     }
@@ -223,7 +280,11 @@ describe('SnippetRepair and migration 016', () => {
     expect(get(added[0])).toBe('{"a":"b"}'); // before the saved position
     expect(get(added[1])).toBe('Real words here');
     expect(
-      (db.prepare('SELECT snippet FROM message_fts WHERE rowid=?').get(added[1]) as { snippet: string }).snippet,
+      (
+        db.prepare('SELECT snippet FROM message_fts WHERE rowid=?').get(added[1]) as {
+          snippet: string;
+        }
+      ).snippet,
     ).toBe('Real words here');
   });
 });

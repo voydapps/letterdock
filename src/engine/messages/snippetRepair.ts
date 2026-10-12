@@ -42,7 +42,9 @@ export class SnippetRepair {
             setKv(this.ctx, DONE, '1');
             return resolve();
           }
-          this.ctx.messages.rewriteSnippets(rows.map((r) => ({ id: r.id, snippet: makeSnippet(r.text, r.html) })));
+          this.ctx.messages.rewriteSnippets(
+            rows.map((r) => ({ id: r.id, snippet: makeSnippet(r.text, r.html) })),
+          );
           setKv(this.ctx, KEY, String(rows[rows.length - 1].id));
           this.ctx.hub.changed({
             folderIds: [...new Set(rows.map((r) => r.folderId))],

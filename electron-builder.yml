@@ -38,6 +38,8 @@ electronLanguages:
 extraResources:
   - from: build/icon.ico
   - from: build/icon.png
+  - from: build/badges
+    to: badges
   - from: build/toast-icons
     to: toast-icons
 # mailto: links. NSIS ignores this key; the Windows registry entries that make Letterdock show up in

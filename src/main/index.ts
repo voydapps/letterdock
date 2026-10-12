@@ -7,6 +7,7 @@ import {
   nativeTheme,
   net,
   nativeImage,
+  screen,
   Notification,
   powerMonitor,
   protocol,
@@ -31,6 +32,7 @@ import {
 } from './background';
 import { AppTray } from './tray';
 import { UnreadBadge, buildBadgeImage } from './unreadBadge';
+import { badgeStripPath, badgeStripsDir, stripCropRect } from './badgeStrips';
 import { QUIT_BUTTONS, QuitState, quitPromptText, shouldAskBeforeQuit } from './quitGuard';
 import { relayUndoToMain } from './undoRelay';
 import { APP_NAME, readEnv, resolveAppUserModelId } from './buildConfig';
@@ -129,14 +131,42 @@ async function boot(): Promise<void> {
   // ---- tray icon (always there; close-to-tray and start-hidden depend on it) ----
   const tray = new AppTray();
   // Red number on the taskbar button and red dot on the tray icon (3.15).
+  const badgeStrips = new Map<number, Electron.NativeImage>();
   const badge = new UnreadBadge(
     {
       getWindow: () => mainWindow,
       setTrayDot: (on) => tray.setDot(on),
-      makeImage: (text) => buildBadgeImage({ fromBitmap: (b, o) => nativeImage.createFromBitmap(b, o) }, text),
+      // Crop the number from the pre-rendered strip of this pixel size (scale factor 1: Electron only uses the 1x bitmap).
+      makeImage: (text, px) => {
+        let strip = badgeStrips.get(px);
+        if (!strip) {
+          strip = nativeImage.createFromPath(
+            badgeStripPath(
+              badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+              px,
+            ),
+          );
+          if (strip.isEmpty()) throw new Error(`badge strip ${px} could not be loaded`);
+          badgeStrips.set(px, strip);
+        }
+        const img = strip.crop(stripCropRect(px, text));
+        if (img.isEmpty()) throw new Error(`badge cell ${text}@${px} is empty`);
+        return img;
+      },
+      fallbackImage: (text) => buildBadgeImage({ fromBitmap: (b, o) => nativeImage.createFromBitmap(b, o) }, text),
+      onFallback: (err) => log.warn({ err: String(err) }, 'badge strips missing, drawing the number from pixels'),
+      getScaleFactor: (w) => {
+        const bw = w as unknown as BrowserWindow;
+        try {
+          return screen.getDisplayMatching(bw.getBounds()).scaleFactor;
+        } catch {
+          return screen.getPrimaryDisplay().scaleFactor;
+        }
+      },
     },
     { badgeTaskbar: settings.get().badgeTaskbar, badgeTray: settings.get().badgeTray },
   );
+  screen.on('display-metrics-changed', () => badge.displayChanged());
   /** Counts are only pushed when they change, so read them once at start and after an engine restart. */
   const readBadgeCounts = () =>
     void engine

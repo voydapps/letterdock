@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.9 - 2026-10-12
+### Fixed
+- The unread number on the taskbar icon is now drawn with a real font, so it looks sharper.
+
 ## 0.6.8 - 2026-10-11
 ### New
 - The buttons on new-mail notifications (Mark as read, Archive, Delete) now have small icons.

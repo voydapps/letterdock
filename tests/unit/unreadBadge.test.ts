@@ -12,9 +12,19 @@ import {
   buildBadgeImage,
   drawBadgeBitmap,
   trayDotWanted,
+  type BadgeDeps,
   type BadgeWindowLike,
   type ImageFactory,
 } from '../../src/main/unreadBadge';
+import {
+  BADGE_STRIP_SIZES,
+  OVERLAY_MAX_PX,
+  badgePx,
+  badgeStripsDir,
+  overlaySize,
+  pickBadgeSize,
+  stripCropRect,
+} from '../../src/main/badgeStrips';
 import { dotDiameter, parseIco, premultiply, trayFrames, withDot } from '../../src/main/trayIcon';
 import { DEFAULT_SETTINGS, mergeSettings } from '../../src/main/settings';
 import { schemas } from '../../src/main/ipcSchemas';
@@ -96,25 +106,18 @@ describe('badge bitmaps', () => {
     expect(() => drawBadgeBitmap(16, '100')).toThrow();
   });
 
-  it('attaches the four sizes with their scale factors', () => {
-    const reps: { scaleFactor: number; width: number; height: number; buffer: Buffer }[] = [];
-    const first: { buffer?: Buffer; opts?: { width: number; height: number; scaleFactor: number } } = {};
+  it('the vector fallback is one 16 px bitmap at scale factor 1', () => {
+    const calls: { buffer: Buffer; opts: { width: number; height: number; scaleFactor: number } }[] = [];
     const factory: ImageFactory = {
       fromBitmap: (buffer, opts) => {
-        first.buffer = buffer;
-        first.opts = opts;
-        return { addRepresentation: (r: (typeof reps)[number]) => reps.push(r) } as never;
+        calls.push({ buffer, opts });
+        return {} as never;
       },
     };
     buildBadgeImage(factory, '42');
-    expect(first.opts).toEqual({ width: 16, height: 16, scaleFactor: 1 });
-    expect(first.buffer!.length).toBe(16 * 16 * 4);
-    expect(reps.map((r) => [r.scaleFactor, r.width, r.height])).toEqual([
-      [1.25, 20, 20],
-      [1.5, 24, 24],
-      [2, 32, 32],
-    ]);
-    expect(reps[2].buffer.length).toBe(32 * 32 * 4);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].opts).toEqual({ width: 16, height: 16, scaleFactor: 1 });
+    expect(calls[0].buffer.length).toBe(16 * 16 * 4);
   });
 });
 
@@ -334,5 +337,130 @@ describe('settings', () => {
     expect(s.safeParse({ badgeTaskbar: false, badgeTray: false }).success).toBe(true);
     expect(s.safeParse({ badgeTaskbar: 'yes' }).success).toBe(false);
     expect(s.safeParse({ badgeTray: 1 }).success).toBe(false);
+  });
+});
+
+
+describe('badge strips', () => {
+  it('picks the smallest strip size that is at least the needed pixels', () => {
+    const table: [number, number][] = [[1, 16], [1.1, 20], [1.25, 20], [1.5, 24], [2, 32], [3, 48], [3.5, 48]];
+    for (const [sf, size] of table) expect(pickBadgeSize(badgePx(sf))).toBe(size);
+    expect(badgePx(1.1)).toBe(18);
+    expect(badgePx(Number.NaN)).toBe(16);
+    expect(BADGE_STRIP_SIZES).toEqual([16, 20, 24, 28, 32, 40, 48]);
+  });
+
+  it('is limited to what Electron passes to Windows (16 px) unless the cap is lifted', () => {
+    expect(OVERLAY_MAX_PX).toBe(16);
+    expect(overlaySize(1.5)).toBe(16);
+    expect(overlaySize(1.5, Infinity)).toBe(24);
+    expect(overlaySize(3.5, Infinity)).toBe(48);
+  });
+
+  it('crops number n from cell n-1', () => {
+    expect(stripCropRect(24, '1')).toEqual({ x: 0, y: 0, width: 24, height: 24 });
+    expect(stripCropRect(24, '26')).toEqual({ x: 600, y: 0, width: 24, height: 24 });
+    expect(stripCropRect(16, '99')).toEqual({ x: 1568, y: 0, width: 16, height: 16 });
+    expect(() => stripCropRect(16, '100')).toThrow();
+    expect(() => stripCropRect(16, '')).toThrow();
+  });
+
+  it('finds the strips in resources when packaged and in build/ in development', () => {
+    expect(badgeStripsDir({ isPackaged: true, resourcesPath: join('r', 'res'), appPath: 'a' })).toBe(join('r', 'res', 'badges'));
+    expect(badgeStripsDir({ isPackaged: false, resourcesPath: 'r', appPath: join('a') })).toBe(join('a', 'build', 'badges'));
+  });
+
+  it('ships a strip of 99 cells for every size', () => {
+    for (const size of BADGE_STRIP_SIZES) {
+      const png = readFileSync(join(__dirname, '..', '..', 'build', 'badges', `badge-${size}.png`));
+      expect(png.readUInt32BE(16)).toBe(size * 99);
+      expect(png.readUInt32BE(20)).toBe(size);
+    }
+  });
+});
+
+describe('badge size follows the display', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function setup(extra: Partial<BadgeDeps> = {}) {
+    const w = fakeWindow();
+    let sf = 1;
+    const makeImage = vi.fn((t: string, px: number) => ({ text: t, px }) as never);
+    const badge = new UnreadBadge(
+      { getWindow: () => w.win, setTrayDot: () => undefined, makeImage, getScaleFactor: () => sf, maxPx: Infinity, ...extra },
+      { badgeTaskbar: true, badgeTray: true },
+    );
+    badge.attachWindow(w.win);
+    return { ...w, badge, makeImage, setSf: (x: number) => (sf = x) };
+  }
+
+  it('builds at the pixel size and caches by text and size', () => {
+    const { badge, makeImage, setSf, win } = setup();
+    badge.setCountNow(26);
+    expect(makeImage).toHaveBeenLastCalledWith('26', 16);
+    setSf(1.5);
+    badge.displayChanged();
+    expect(makeImage).toHaveBeenLastCalledWith('26', 24);
+    expect(win.setOverlayIcon).toHaveBeenCalledTimes(2);
+    badge.displayChanged(); // same size: nothing new
+    expect(win.setOverlayIcon).toHaveBeenCalledTimes(2);
+    setSf(1);
+    badge.displayChanged(); // back: cached image, applied again
+    expect(makeImage).toHaveBeenCalledTimes(2);
+    expect(win.setOverlayIcon).toHaveBeenCalledTimes(3);
+    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '26', px: 16 }, '26 unread messages');
+  });
+
+  it('applies again when the window moves to another display', () => {
+    const { badge, setSf, win, handlers } = setup();
+    badge.setCountNow(3);
+    setSf(2);
+    handlers.moved();
+    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '3', px: 32 }, '3 unread messages');
+  });
+
+  it('shows 99 for 100 and more, at the same size', () => {
+    const { badge, makeImage } = setup();
+    badge.setCountNow(250);
+    expect(makeImage).toHaveBeenCalledWith('99', 16);
+  });
+
+  it('uses 1x when the scale factor cannot be read', () => {
+    const { badge, makeImage } = setup({
+      getScaleFactor: () => {
+        throw new Error('no display');
+      },
+    });
+    badge.setCountNow(5);
+    expect(makeImage).toHaveBeenCalledWith('5', 16);
+  });
+
+  it('keeps the default 16 px cap on this Electron', () => {
+    const { badge, makeImage } = setup({ maxPx: undefined });
+    badge.setCountNow(5);
+    badge.setCountNow(0);
+    // scale 1.5 would be 24, the cap makes it 16
+    const w2 = setup({ maxPx: undefined, getScaleFactor: () => 1.5 });
+    w2.badge.setCountNow(5);
+    expect(w2.makeImage).toHaveBeenCalledWith('5', 16);
+    expect(makeImage).toHaveBeenCalledWith('5', 16);
+  });
+
+  it('falls back to the vector image when the strips fail, and says so once', () => {
+    const onFallback = vi.fn();
+    const fallbackImage = vi.fn((t: string) => ({ text: t, vector: true }) as never);
+    const { badge, win } = setup({
+      makeImage: () => {
+        throw new Error('strip missing');
+      },
+      fallbackImage,
+      onFallback,
+    });
+    badge.setCountNow(7);
+    badge.setCountNow(8);
+    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '8', vector: true }, '8 unread messages');
+    expect(fallbackImage).toHaveBeenCalledTimes(2);
+    expect(onFallback).toHaveBeenCalledTimes(1);
   });
 });

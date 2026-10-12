@@ -1,7 +1,13 @@
-// Unread count on the taskbar button (DESIGN-SPEC 3.15). The images are drawn from raw pixels here
-// (no assets, no renderer). Everything that draws is pure and has no Electron import; the controller
-// gets the window, the image maker and the tray switch from outside, so tests can drive it.
+// Unread count on the taskbar button (DESIGN-SPEC 3.15). The normal images are cropped from the pre-rendered
+// strips in build/badges (see badgeStrips.ts). If those cannot be loaded, the vector drawer below (raw pixels)
+// is the fallback, so the badge never disappears. Everything that draws is pure and has no Electron import; the
+// controller gets the window, the image maker and the tray switch from outside, so tests can drive it.
+//
+// Representation: ONE bitmap at the pixel size, scaleFactor 1. Electron's SetOverlayIcon uses only the 1x
+// representation (`overlay.AsBitmap()`), so extra or scaled representations are never seen by Windows, and a
+// bitmap tagged with another scale factor would only be resampled first. The pixel size is the real size.
 import type { NativeImage } from 'electron';
+import { overlaySize, OVERLAY_MAX_PX } from './badgeStrips';
 
 export const BADGE_RED = { r: 0xc4, g: 0x2b, b: 0x1c };
 /** The four sizes and the scale factor each one is for (100%, 125%, 150%, 200%). */
@@ -234,21 +240,31 @@ export function buildMultiScaleImage(
   return img;
 }
 
+/** The vector fallback: one 16 px bitmap (what Electron sends to Windows anyway), scale factor 1. */
 export function buildBadgeImage(factory: ImageFactory, text: string): NativeImage {
-  return buildMultiScaleImage(factory, (size) => drawBadgeBitmap(size, text));
+  return factory.fromBitmap(drawBadgeBitmap(16, text), { width: 16, height: 16, scaleFactor: 1 });
 }
 
 // ---------------------------------------------------------------- controller
 export interface BadgeWindowLike {
   isDestroyed(): boolean;
   setOverlayIcon(image: NativeImage | null, description: string): void;
-  on(event: 'show' | 'restore' | 'focus', listener: () => void): unknown;
+  on(event: 'show' | 'restore' | 'focus' | 'moved', listener: () => void): unknown;
 }
 
 export interface BadgeDeps {
   getWindow: () => BadgeWindowLike | null;
   setTrayDot: (on: boolean) => void;
-  makeImage: (text: string) => NativeImage;
+  /** The image for `text` (1..99) at `px` physical pixels (a strip size). Throw to use the vector fallback. */
+  makeImage: (text: string, px: number) => NativeImage;
+  /** Vector fallback, used when `makeImage` throws. */
+  fallbackImage?: (text: string) => NativeImage;
+  /** Scale factor of the display the window is on. */
+  getScaleFactor?: (win: BadgeWindowLike) => number;
+  /** Largest overlay size worth making (default `OVERLAY_MAX_PX`). */
+  maxPx?: number;
+  /** Called once when the strips failed and the vector fallback is used. */
+  onFallback?: (err: unknown) => void;
 }
 
 export interface BadgeSettings {
@@ -265,6 +281,7 @@ export class UnreadBadge {
   private lastKey = '|';
   private lastWin: BadgeWindowLike | null = null;
   private lastDot = false;
+  private fallbackReported = false;
   private readonly images = new Map<string, NativeImage>();
 
   constructor(
@@ -299,7 +316,12 @@ export class UnreadBadge {
   /** Call for each main window that gets created. Windows can drop the overlay, so it is set again on show. */
   attachWindow(win: BadgeWindowLike): void {
     const again = () => this.apply(true);
-    for (const ev of ['show', 'restore', 'focus'] as const) win.on(ev, again);
+    for (const ev of ['show', 'restore', 'focus', 'moved'] as const) win.on(ev, again);
+    this.apply(false);
+  }
+
+  /** The display scale changed (screen 'display-metrics-changed'): apply again if the pixel size is different. */
+  displayChanged(): void {
     this.apply(false);
   }
 
@@ -308,12 +330,33 @@ export class UnreadBadge {
     this.timer = null;
   }
 
-  private image(text: string): NativeImage {
-    let img = this.images.get(text);
+  private pixelSize(win: BadgeWindowLike): number {
+    const sf = (() => {
+      try {
+        return this.deps.getScaleFactor?.(win) ?? 1;
+      } catch {
+        return 1;
+      }
+    })();
+    return overlaySize(sf, this.deps.maxPx ?? OVERLAY_MAX_PX);
+  }
+
+  private image(text: string, px: number): NativeImage {
+    const cacheKey = `${text}@${px}`;
+    let img = this.images.get(cacheKey);
     if (!img) {
       if (this.images.size >= IMAGE_CACHE_MAX) this.images.delete(this.images.keys().next().value as string);
-      img = this.deps.makeImage(text);
-      this.images.set(text, img);
+      try {
+        img = this.deps.makeImage(text, px);
+      } catch (e) {
+        if (!this.fallbackReported) {
+          this.fallbackReported = true;
+          this.deps.onFallback?.(e);
+        }
+        if (!this.deps.fallbackImage) throw e;
+        img = this.deps.fallbackImage(text);
+      }
+      this.images.set(cacheKey, img);
     }
     return img;
   }
@@ -321,8 +364,9 @@ export class UnreadBadge {
   private apply(force: boolean): void {
     const text = this.settings.badgeTaskbar ? badgeText(this.count) : '';
     const description = text ? badgeDescription(this.count) : '';
-    const key = `${text}|${description}`;
     const win = this.deps.getWindow();
+    const px = win && !win.isDestroyed() && text ? this.pixelSize(win) : 0;
+    const key = `${text ? `${text}@${px}` : ''}|${description}`;
     if (win && !win.isDestroyed()) {
       if (win !== this.lastWin) {
         this.lastWin = win;
@@ -330,7 +374,7 @@ export class UnreadBadge {
       }
       if (force ? text !== '' : key !== this.lastKey) {
         try {
-          if (text) win.setOverlayIcon(this.image(text), description);
+          if (text) win.setOverlayIcon(this.image(text, px), description);
           else win.setOverlayIcon(null, '');
         } catch {
           /* the window went away between the check and the call */

@@ -274,6 +274,13 @@
 .cexp-in {
   min-height: 0;
   overflow: hidden;
+  transition: overflow 0s allow-discrete;
+}
+/* Once a card is fully open it stops clipping: a wide message's pinned sideways bar (.mbar) needs to stick to the
+   pane, and a clipping box in between would stop that. It still clips while it opens and closes. */
+.cexp.on > .cexp-in {
+  overflow: visible;
+  transition: overflow 0s 167ms allow-discrete;
 }
 /* A card that is going away: it starts open and closes (its border goes with it). */
 .cleave {

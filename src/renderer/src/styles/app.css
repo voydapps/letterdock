@@ -226,7 +226,7 @@ svg.i.fill {
   background: var(--pressed);
 }
 .ibtn.sm {
-  width: 28px;
+  width: 20px;
   height: 28px;
 }
 .ibtn.xs {
@@ -1261,7 +1261,8 @@ mark {
 .rbody {
   flex: 1;
   overflow: auto;
-  padding: 20px 24px 32px;
+  --rbody-pb: 32px;
+  padding: 20px 24px var(--rbody-pb);
   min-height: 0;
 }
 .rin {
@@ -1376,9 +1377,49 @@ mark {
 }
 /* A very wide email: ReadingPane sets the frame to the width of its content and this box scrolls it sideways.
    A normal email fits, so there is no scrollbar and nothing moves. The pane keeps the vertical scrolling. */
+.mscroll-box {
+  position: relative;
+}
 .mscroll {
   overflow-x: auto;
   overflow-y: hidden;
+}
+/* Wide email: the sideways bar is the pinned one (.mbar), not the one at the end of the message. */
+.mscroll.wide::-webkit-scrollbar {
+  display: none;
+}
+/* Hint that more is to the right: a soft shadow on the right edge while there is more to see. */
+.mfade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0));
+}
+.mscroll-box[data-more='1'] .mfade {
+  opacity: 1;
+}
+/* The pinned sideways scrollbar: sticks to the bottom of the visible pane while a wide message is on screen.
+   It sits outside the card (a card has overflow:hidden, which would stop the sticking). */
+.mbar {
+  position: sticky;
+  /* Sticky is measured inside the pane's bottom padding: reach down over it, to the real bottom edge. */
+  bottom: calc(-1 * var(--rbody-pb, 0px));
+  z-index: 2;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  background: var(--bg-surface);
+}
+.mbar[hidden] {
+  display: none;
+}
+.mbar > div {
+  height: 1px;
 }
 .mbody iframe {
   width: 100%;
@@ -1401,7 +1442,8 @@ mark {
 .mbody[data-autofocus]:focus-visible {
   box-shadow: none;
 }
-.mbody iframe:focus-visible:not([data-autofocus]) {
+/* The ring is drawn on the wrapper, so it stays fully visible when the frame is wider than the pane. */
+.mscroll[data-kb='1'] {
   outline: 2px solid var(--ring-o);
   outline-offset: -2px;
 }

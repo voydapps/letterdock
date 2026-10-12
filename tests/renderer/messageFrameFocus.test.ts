@@ -10,10 +10,10 @@ describe('message frame focus ring', () => {
     expect(css).toMatch(/\.mbody\[data-autofocus\]:focus-visible\s*\{[^}]*box-shadow:\s*none/);
     expect(css).toMatch(/\.mbody iframe:focus-visible\s*\{[^}]*outline:\s*none[^}]*box-shadow:\s*none/);
   });
-  it('shows an app-coloured ring on the frame for keyboard focus only', () => {
-    expect(css).toMatch(
-      /\.mbody iframe:focus-visible:not\(\[data-autofocus\]\)\s*\{[^}]*outline:\s*2px solid var\(--ring-o\)/,
-    );
+  it('draws the app-coloured ring on the scroll wrapper (fully visible on a wide frame), set for keyboard focus only', () => {
+    expect(css).toMatch(/\.mscroll\[data-kb='1'\]\s*\{[^}]*outline:\s*2px solid var\(--ring-o\)/);
+    const pane = readFileSync('src/renderer/src/features/reading/ReadingPane.tsx', 'utf8');
+    expect(pane).toContain("hasAttribute('data-autofocus')"); // code focus (viewer window) shows no ring
   });
   for (const f of ['ViewerApp', 'EmlViewerApp']) {
     it(`${f} marks its code focus and clears the mark on blur`, () => {

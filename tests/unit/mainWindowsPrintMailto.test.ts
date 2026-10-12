@@ -4,6 +4,7 @@ import { computeMailtoStatus, DEFAULT_APPS_URI, findMailtoArg } from '../../src/
 import {
   buildPrintDocument,
   printScale,
+  softBreakText,
   fmtDate,
   fmtSize,
   PRINT_CSP,
@@ -70,7 +71,7 @@ describe('message window helpers', () => {
 
 describe('print scale for wide emails', () => {
   it('scales a fixed 1000 px statement down to the page', () => {
-    expect(printScale('<table width="1000" style="width:1000px"><tr><td>x</td></tr></table>')).toBe(0.68);
+    expect(printScale('<table width="1000" style="width:1000px"><tr><td>x</td></tr></table>')).toBe(0.64);
   });
   it('leaves normal emails alone', () => {
     expect(printScale('<table width="600"><tr><td>x</td></tr></table>')).toBe(1);
@@ -82,8 +83,26 @@ describe('print scale for wide emails', () => {
   });
   it('writes the zoom into the printed body only when needed', () => {
     const base = { subject: 's', from: null, to: [], cc: [], date: 0, text: '' };
-    expect(buildPrintDocument({ ...base, bodyHtml: '<table width="1200"></table>' })).toContain('style="zoom:0.56"');
+    expect(buildPrintDocument({ ...base, bodyHtml: '<table width="1200"></table>' })).toContain('style="zoom:0.53"');
     expect(buildPrintDocument({ ...base, bodyHtml: '<p>Hi</p>' })).not.toContain('zoom:');
+  });
+});
+
+describe('softBreakText (print)', () => {
+  const url = 'https://example.com/' + 'a'.repeat(60);
+  it('adds break points into long unbroken text, keeps the text the same', () => {
+    const out = softBreakText('<p>' + url + '</p>');
+    expect(out).toContain('<wbr>');
+    expect(out.replace(/<wbr>/g, '')).toBe('<p>' + url + '</p>');
+  });
+  it('leaves short words, style, pre and tags alone, and never splits an entity', () => {
+    expect(softBreakText('<p>short words only</p>')).toBe('<p>short words only</p>');
+    const css = '<style>a{color:red;margin:0;padding:0;border:1px solid #000}</style>';
+    expect(softBreakText(css)).toBe(css);
+    const pre = '<pre>' + 'x'.repeat(80) + '</pre>';
+    expect(softBreakText(pre)).toBe(pre);
+    const amp = softBreakText('<p>' + 'a&amp;b'.repeat(12) + '</p>');
+    expect(amp).not.toMatch(/&[^;<]*<wbr>/);
   });
 });
 

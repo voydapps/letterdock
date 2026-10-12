@@ -93,8 +93,41 @@ export function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Width of a printed line on A4 / Letter with 15 mm margins, in CSS pixels (a little under the real one). */
-const PRINT_LINE_PX = 680;
+/** Width of a printed line on A4 / Letter with 15 mm margins is about 680 CSS pixels. 640 leaves room for table borders and spacing, which add to a declared width. */
+const PRINT_LINE_PX = 640;
+
+/** A run this long inside text gets soft break points (the screen does the same: softBreakCells in sanitize.ts). */
+const LONG_RUN = 30;
+const BREAK_EVERY = 16;
+
+/**
+ * overflow-wrap:anywhere would squeeze every table column to one letter, so printing uses break-word and long
+ * unbroken text (a URL) gets <wbr> break points instead. Not applied inside style, pre and textarea.
+ */
+export function softBreakText(html: string): string {
+  const units = /&#?\w+;|[\s\S]/g;
+  return html
+    .split(/(<style[\s\S]*?<\/style>|<pre[\s\S]*?<\/pre>|<textarea[\s\S]*?<\/textarea>)/i)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(/>([^<>]+)</g, (_m, text: string) => {
+            const out = text.split(/(\s+)/).map((word) => {
+              if (word.length < LONG_RUN || /^\s/.test(word)) return word;
+              const chars = word.match(units) ?? [];
+              if (chars.length < LONG_RUN) return word;
+              let r = '';
+              chars.forEach((c, k) => {
+                if (k > 0 && k % BREAK_EVERY === 0) r += '<wbr>';
+                r += c;
+              });
+              return r;
+            });
+            return '>' + out.join('') + '<';
+          }),
+    )
+    .join('');
+}
 
 /** Pictures are already capped to the page by max-width:100%, so their width attribute must not scale the text. */
 const stripImages = (html: string): string => html.replace(/<img\b[^>]*>/gi, '');
@@ -125,7 +158,7 @@ body{font:11pt/1.4 "Segoe UI",Arial,sans-serif;padding:0}
 .hdr table{border-collapse:collapse;font-size:10pt}
 .hdr th{font-weight:700;text-align:left;vertical-align:top;padding:1px 10px 1px 0;white-space:nowrap}
 .hdr td{padding:1px 0;overflow-wrap:anywhere}
-.mail-body{overflow-wrap:anywhere}
+.mail-body{overflow-wrap:break-word}
 .mail-body img{max-width:100%!important;height:auto}
 .mail-body table{max-width:100%}
 .mail-body tr{break-inside:avoid}
@@ -154,7 +187,7 @@ export function buildPrintDocument(i: PrintInput): string {
   row('Date', fmtDate(i.date));
   const body =
     i.bodyHtml !== null
-      ? stripDangerousTags(i.bodyHtml)
+      ? softBreakText(stripDangerousTags(i.bodyHtml))
       : `<pre class="plain">${escapeHtml(i.text)}</pre>`;
   const scale = i.bodyHtml !== null ? printScale(i.bodyHtml) : 1;
   return (

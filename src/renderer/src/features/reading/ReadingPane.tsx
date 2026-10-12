@@ -947,6 +947,9 @@ const FRAME_KEYS: ShortcutId[] = ['back', 'closeWindow', 'print', 'reply', 'repl
 
 function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; onReject: () => void }) {
   const ref = useRef<HTMLIFrameElement>(null);
+  // Wide email: a scrollbar pinned to the bottom of the visible pane (the wrapper's own bar sits at the end of the message).
+  const barRef = useRef<HTMLDivElement>(null);
+  const barInnerRef = useRef<HTMLDivElement>(null);
   const [confirmLink, setConfirmLink] = useState<{ url: string; text: string } | null>(null);
   const planRef = useRef(plan);
   const rejectRef = useRef(onReject);
@@ -983,6 +986,20 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       // around it scrolls sideways. A normal email keeps width:100% and no scrollbar.
       const wrap = frame.parentElement?.classList.contains('mscroll') ? frame.parentElement : null;
       const docEl = doc.documentElement;
+      const syncBar = () => {
+        const bar = barRef.current;
+        const inner = barInnerRef.current;
+        if (!wrap || !bar || !inner) return;
+        const wide = wrap.scrollWidth > wrap.clientWidth + 1;
+        wrap.classList.toggle('wide', wide);
+        bar.hidden = !wide;
+        if (wide) {
+          inner.style.width = `${wrap.scrollWidth}px`;
+          if (bar.scrollLeft !== wrap.scrollLeft) bar.scrollLeft = wrap.scrollLeft;
+        }
+        // Right-edge hint: more content to the right.
+        (wrap.parentElement as HTMLElement).dataset.more = wide && wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1 ? '1' : '';
+      };
       const measure = () => {
         // Measure at the pane width first, so a pane that gets wider shrinks the frame again.
         if (frame.style.width) frame.style.width = '';
@@ -991,6 +1008,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         if (sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
         const h = Math.max(docEl.scrollHeight, doc.body?.scrollHeight ?? 0);
         frame.style.height = `${Math.max(MIN_FRAME_HEIGHT, Math.ceil(h))}px`;
+        syncBar();
       };
       for (const idx of openQuotes.current) {
         const t = doc.querySelector(`[${QUOTE_TOGGLE_ATTR}="${idx}"]`);
@@ -1089,7 +1107,55 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       }
     };
     frame.addEventListener('load', attach);
+    // The wrapper and the pinned bar scroll together.
+    const wrapEl = frame.parentElement;
+    const barEl = barRef.current;
+    const onWrapScroll = () => {
+      if (barEl && barEl.scrollLeft !== wrapEl!.scrollLeft) barEl.scrollLeft = wrapEl!.scrollLeft;
+      (wrapEl!.parentElement as HTMLElement).dataset.more =
+        wrapEl!.scrollLeft + wrapEl!.clientWidth < wrapEl!.scrollWidth - 1 && wrapEl!.classList.contains('wide') ? '1' : '';
+    };
+    const onBarScroll = () => {
+      if (wrapEl && barEl && wrapEl.scrollLeft !== barEl.scrollLeft) wrapEl.scrollLeft = barEl.scrollLeft;
+    };
+    // Focus ring: drawn on the wrapper (the frame can be wider than the pane). Only for keyboard focus, as before:
+    // the browser does not match :focus-visible on a frame that holds a document, so the last input is tracked.
+    let lastWasKey = false;
+    const onKey = () => (lastWasKey = true);
+    const onMouse = () => {
+      lastWasKey = false;
+      if (wrapEl) delete wrapEl.dataset.kb;
+    };
+    const onFrameFocus = () => {
+      if (lastWasKey && wrapEl && !frame.hasAttribute('data-autofocus')) wrapEl.dataset.kb = '1';
+    };
+    const onFrameBlur = () => {
+      if (wrapEl) delete wrapEl.dataset.kb;
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onMouse, true);
+    frame.addEventListener('focus', onFrameFocus);
+    frame.addEventListener('blur', onFrameBlur);
+    const onDocInput = (ev: Event) => (ev.type === 'keydown' ? onKey() : onMouse());
+    const bindDoc = () => {
+      const d = frame.contentDocument;
+      d?.addEventListener('keydown', onDocInput, true);
+      d?.addEventListener('mousedown', onDocInput, true);
+      // Focus that moves into the frame fires on its window, not on the iframe element.
+      d?.defaultView?.addEventListener('focus', onFrameFocus);
+      d?.defaultView?.addEventListener('blur', onFrameBlur);
+    };
+    frame.addEventListener('load', bindDoc);
+    wrapEl?.addEventListener('scroll', onWrapScroll, { passive: true });
+    barEl?.addEventListener('scroll', onBarScroll, { passive: true });
     return () => {
+      wrapEl?.removeEventListener('scroll', onWrapScroll);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onMouse, true);
+      frame.removeEventListener('focus', onFrameFocus);
+      frame.removeEventListener('blur', onFrameBlur);
+      frame.removeEventListener('load', bindDoc);
+      barEl?.removeEventListener('scroll', onBarScroll);
       frame.removeEventListener('load', attach);
       ro?.disconnect();
       if (revealTimer) clearTimeout(revealTimer);
@@ -1097,6 +1163,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
   }, [html]);
 
   const iframe = (
+    <div className="mscroll-box">
     <div className="mscroll">
     <iframe
       ref={ref}
@@ -1107,10 +1174,15 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       tabIndex={0}
     />
     </div>
+    <div className="mfade" aria-hidden="true" />
+    </div>
   );
   return (
     <>
       {plan.card ? <div className="mcard">{iframe}</div> : iframe}
+      <div className="mbar" ref={barRef} hidden aria-hidden="true" tabIndex={-1}>
+        <div ref={barInnerRef} />
+      </div>
       {confirmLink ? (
         <Dialog title="Open this link?" size="sm" onClose={() => setConfirmLink(null)} initialFocus=".foot .btn:not(.primary)">
           <p>The link says it goes to a different place than it really does.</p>

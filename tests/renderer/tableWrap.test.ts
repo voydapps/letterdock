@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser } from 'playwright';
 import { buildSrcdoc, sanitizeEmailHtml } from '../../src/renderer/src/lib/sanitize';
+import { wideStatementHtml } from '../../src/renderer/src/dev/wideStatementHtml';
 
 const URL300 = 'https://example.com/' + 'a'.repeat(300);
 
@@ -87,6 +88,59 @@ describe('layout in a narrow frame (real Chromium; skipped when it is not instal
     expect(r.th).toBeGreaterThan(ONE_LINE * 1.5);
   });
 
+  // Wide statement (see wideEmail.test.ts for the scrolling in the real pane): in the frame document the content
+  // is all there and reachable, and a sender's overflow:hidden on html/body cannot cut it.
+  it('a wide statement overflows the frame (so the wrapper can scroll it), also with overflow:hidden from the sender', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const html =
+      '<div></div><style>html,body{overflow:hidden!important;overflow-x:hidden}</style>' +
+      wideStatementHtml();
+    const page = await browser.newPage({ viewport: { width: 700, height: 600 } });
+    try {
+      await page.setContent(frame(html));
+      const r = await page.evaluate(() => {
+        const d = document.documentElement;
+        d.scrollLeft = 99999;
+        return {
+          sw: d.scrollWidth,
+          cw: d.clientWidth,
+          canScroll: d.scrollLeft > 0,
+          ov: getComputedStyle(document.body).overflowX,
+        };
+      });
+      expect(r.sw).toBeGreaterThan(r.cw);
+      expect(r.ov).toBe('visible');
+      expect(r.canScroll).toBe(true);
+    } finally {
+      await page.close();
+    }
+  });
+
+  // History: 0.6.11 used overflow-wrap:anywhere, which squeezed a wide table without nowrap cells to the pane (one-letter
+  // columns). 0.6.12 stopped that squeeze, so such a table now overflows and must be scrollable.
+  it('a wide statement without nowrap cells: old CSS squeezed it, the current CSS keeps the columns and overflows', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const doc = frame(wideStatementHtml({ nowrap: false }));
+    const at700 = async (d: string): Promise<{ sw: number; cw: number }> => {
+      const page = await browser!.newPage({ viewport: { width: 700, height: 600 } });
+      try {
+        await page.setContent(d);
+        return await page.evaluate(() => ({
+          sw: document.documentElement.scrollWidth,
+          cw: document.documentElement.clientWidth,
+        }));
+      } finally {
+        await page.close();
+      }
+    };
+    const now = await at700(doc);
+    const old = await at700(
+      doc.replace('overflow-wrap:break-word', 'word-wrap:break-word;overflow-wrap:anywhere'),
+    );
+    expect(now.sw).toBeGreaterThan(now.cw);
+    expect(old.sw).toBe(old.cw);
+  });
+
   const cases: [string, string][] = [
     ['a 300-char URL in a paragraph', `<p>${URL300}</p>`],
     ['a long URL in a table cell', CELL_URL],
@@ -108,7 +162,9 @@ describe('layout in a narrow frame (real Chromium; skipped when it is not instal
 describe('compose editor quotes', () => {
   it('cleanDraft-style sanitizing keeps the soft break points (wbr is allowed)', async () => {
     const { default: DOMPurify } = await import('dompurify');
-    const out = DOMPurify(window).sanitize('<table><tr><td>a<wbr>b</td></tr></table>', { ALLOWED_TAGS: ['table', 'tr', 'td', 'tbody', 'wbr'] });
+    const out = DOMPurify(window).sanitize('<table><tr><td>a<wbr>b</td></tr></table>', {
+      ALLOWED_TAGS: ['table', 'tr', 'td', 'tbody', 'wbr'],
+    });
     expect(out).toContain('<wbr>');
   });
 });

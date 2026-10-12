@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { computeMailtoStatus, DEFAULT_APPS_URI, findMailtoArg } from '../../src/main/mailto';
 import {
   buildPrintDocument,
+  printScale,
   fmtDate,
   fmtSize,
   PRINT_CSP,
@@ -64,6 +65,22 @@ describe('message window helpers', () => {
       maximized: true,
     });
     expect(parseViewerSize('{"width":10,"height":99999}')).toMatchObject({ width: 480, height: 8000 });
+  });
+});
+
+describe('print scale for wide emails', () => {
+  it('scales a fixed 1000 px statement down to the page', () => {
+    expect(printScale('<table width="1000" style="width:1000px"><tr><td>x</td></tr></table>')).toBe(0.68);
+  });
+  it('leaves normal emails alone', () => {
+    expect(printScale('<table width="600"><tr><td>x</td></tr></table>')).toBe(1);
+    expect(printScale('<table width="100%" style="width:100%"></table>')).toBe(1);
+    expect(printScale('<p>Hello</p>')).toBe(1);
+  });
+  it('writes the zoom into the printed body only when needed', () => {
+    const base = { subject: 's', from: null, to: [], cc: [], date: 0, text: '' };
+    expect(buildPrintDocument({ ...base, bodyHtml: '<table width="1200"></table>' })).toContain('style="zoom:0.56"');
+    expect(buildPrintDocument({ ...base, bodyHtml: '<p>Hi</p>' })).not.toContain('zoom:');
   });
 });
 

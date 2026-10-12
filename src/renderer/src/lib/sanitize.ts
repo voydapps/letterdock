@@ -307,8 +307,10 @@ export function sanitizeEmailHtml(
 }
 
 // The frame height must follow the content, never the pane: height:auto!important beats sender rules.
+// :root,:root>body{overflow:visible!important}: more specific than a sender's html,body rule, which must not cut a wide
+// email (and would hide its width from the frame measuring, so the wrapper could not scroll it).
 const BASE_CSS =
-  'html,body{margin:0;padding:0;height:auto!important;min-height:0!important}body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;background:#fff;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}a{color:#0f6cbd}';
+  'html,body{margin:0;padding:0;height:auto!important;min-height:0!important}:root,:root>body{overflow:visible!important}body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;background:#fff;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}a{color:#0f6cbd}';
 
 export interface FrameTheme {
   /** Extra CSS, added after the base CSS. */

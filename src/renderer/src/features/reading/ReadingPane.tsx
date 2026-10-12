@@ -23,6 +23,7 @@ import { printOpenMessage, registerPrintSource } from '../../lib/print';
 import { asAppError, call } from '../../lib/api';
 import { fileKind, fileSize, fullDate, initials, senderName } from '../../lib/format';
 import { buildSrcdoc, cidRefs, loadTrackerLib, sanitizeEmailHtml, trackerLibIfLoaded, type SanitizedHtml, type TrackerApi } from '../../lib/sanitize';
+import { showClippedContent } from '../../lib/frameFit';
 import { planBody, verifyContrast, type RenderPlan } from '../../lib/emailTheme';
 import { QUOTE_HIDE, QUOTE_SHOW, QUOTE_TOGGLE_ATTR, foldQuotedHtml, setQuoteOpen, splitQuotedText } from '../../lib/quotes';
 import { reportActionError, toast, toastError } from '../../store/toasts';
@@ -976,15 +977,20 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
     const attach = () => {
       const doc = frame.contentDocument;
       if (!doc) return;
-      // The frame height follows the content (DESIGN-SPEC 3.6.1 G): shrink to 0, measure, then set.
+      // The frame follows the content in both directions (DESIGN-SPEC 3.6.1 G). Height: shrink to 0, measure, set.
+      // Width: a very wide email (a statement with fixed 1000 px tables) cannot fit the pane, and the frame
+      // cannot scroll by itself. So the frame gets the width of its content and the wrapper (.mscroll)
+      // around it scrolls sideways. A normal email keeps width:100% and no scrollbar.
+      const wrap = frame.parentElement?.classList.contains('mscroll') ? frame.parentElement : null;
+      const docEl = doc.documentElement;
       const measure = () => {
+        // Measure at the pane width first, so a pane that gets wider shrinks the frame again.
+        if (frame.style.width) frame.style.width = '';
         frame.style.height = '0px';
-        const h = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0);
-        const fit = Math.max(MIN_FRAME_HEIGHT, Math.ceil(h));
-        frame.style.height = `${fit}px`;
-        // A horizontal scrollbar (wide email) takes room from the frame: add it so no vertical bar appears.
-        const bar = (frame.contentWindow?.innerHeight ?? 0) - doc.documentElement.clientHeight;
-        if (bar > 0 && bar < 40) frame.style.height = `${fit + bar}px`;
+        const sw = Math.max(docEl.scrollWidth, doc.body?.scrollWidth ?? 0);
+        if (sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
+        const h = Math.max(docEl.scrollHeight, doc.body?.scrollHeight ?? 0);
+        frame.style.height = `${Math.max(MIN_FRAME_HEIGHT, Math.ceil(h))}px`;
       };
       for (const idx of openQuotes.current) {
         const t = doc.querySelector(`[${QUOTE_TOGGLE_ATTR}="${idx}"]`);
@@ -999,11 +1005,14 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         }
         reveal();
       }
+      showClippedContent(doc);
       measure();
       ro?.disconnect();
       ro = new ResizeObserver(measure);
       ro.observe(doc.documentElement);
       if (doc.body) ro.observe(doc.body);
+      // The pane width changes the wrapper, not the (fixed width) frame: measure again then.
+      if (wrap) ro.observe(wrap);
       // Images change the height when they finish loading (load/error do not bubble: use capture).
       doc.addEventListener('load', measure, true);
       doc.addEventListener('error', measure, true);
@@ -1014,6 +1023,13 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         else openQuotes.current.delete(idx);
         measure();
       };
+      // Arrow keys inside the frame scroll the wrapper sideways when the email is wider than the pane.
+      doc.addEventListener('keydown', (ev) => {
+        if ((ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') || ev.ctrlKey || ev.altKey || ev.metaKey || ev.shiftKey) return;
+        if (!wrap || wrap.scrollWidth <= wrap.clientWidth + 1) return;
+        ev.preventDefault();
+        wrap.scrollLeft += ev.key === 'ArrowLeft' ? -40 : 40;
+      });
       doc.addEventListener('keydown', (ev) => {
         if (ev.key !== 'Enter' && ev.key !== ' ') return;
         const btn = (ev.target as Element | null)?.closest?.(`[${QUOTE_TOGGLE_ATTR}]`);
@@ -1081,6 +1097,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
   }, [html]);
 
   const iframe = (
+    <div className="mscroll">
     <iframe
       ref={ref}
       className={plan.scheme === 'dark' ? 'themed' : undefined}
@@ -1089,6 +1106,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       srcDoc={html}
       tabIndex={0}
     />
+    </div>
   );
   return (
     <>

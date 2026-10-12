@@ -15,6 +15,7 @@ import type {
   ScheduledItem,
   SendReq,
 } from '../../../shared/ipc';
+import { wideStatementHtml } from './wideStatementHtml';
 
 export interface DemoBody {
   html?: string | null;
@@ -178,6 +179,7 @@ export function buildDemo(now: number): Demo {
     shop: addr('Larkspur Shop', 'orders@example.net'),
     hr: addr('Northfield HR', 'people@example.org'),
     cycle: addr('Cedar Ridge Cycling Club', 'rides@example.net'),
+    markets: addr('Northgate Markets', 'statements@example.net'),
   };
 
   interface Opt {
@@ -256,6 +258,7 @@ export function buildDemo(now: number): Demo {
   });
   add('a2', 'inbox', 70, P.priya, 'Invoice #1187 for October', 'Hi Anna, please find the invoice for October attached. Payment is due in 14 days.', { seen: false, att: pdf('invoice-1187.pdf') });
   add('a1', 'inbox', 120, P.pine, 'Spring menu is here: try the rosemary loaf', 'Warm rosemary loaf, lemon buns and our new honey oat bread. Baked every morning from 6 am.', { seen: false, body: { html: pinewoodHtml, text: null } });
+  add('a1', 'inbox', 240, P.markets, 'Daily Confirmation 2026.10.09', 'Account 5550123: your daily confirmation is below.', { body: { html: wideStatementHtml(), text: null } });
   add('a1', 'inbox', 180, P.lib, 'Your hold is ready for pickup', 'Hello Anna, the book you reserved, The Quiet Orchard, is waiting at the front desk.', { body: { html: libraryHtml, text: null, remoteImages: true } });
   add('a1', 'inbox', 300, P.mia, 'Photos from the lake', 'Here are the best ones from last weekend. The sunset one is my favourite!', { forwarded: true, att: [{ filename: 'lake-sunset.jpg', contentType: 'image/jpeg', size: 1_240_000 }, { filename: 'lake-group.jpg', contentType: 'image/jpeg', size: 980_000 }] });
   add('a2', 'inbox', 360, P.lena, 'Team lunch on Friday?', 'Shall we book the Italian place near the office? Twelve people so far.');

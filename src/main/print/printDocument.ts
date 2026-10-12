@@ -93,6 +93,23 @@ export function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Width of a printed line on A4 / Letter with 15 mm margins, in CSS pixels (a little under the real one). */
+const PRINT_LINE_PX = 680;
+
+/**
+ * The widest fixed width the body asks for (width="1000", width:1000px). A page cannot scroll sideways, so a
+ * wide statement would be cut at the right edge. The print window runs no script and cannot measure, so
+ * this reads the numbers from the markup and the document is scaled down to fit (never up). 1 = no scaling.
+ */
+export function printScale(html: string): number {
+  let widest = 0;
+  for (const m of html.matchAll(/\bwidth\s*=\s*["']?(\d{3,4})(?![\d%])|\bwidth\s*:\s*(\d{3,4})(?:\.\d+)?px/gi)) {
+    widest = Math.max(widest, Number(m[1] ?? m[2]));
+  }
+  if (widest <= PRINT_LINE_PX || widest > 6000) return 1;
+  return Math.max(0.4, Math.floor((PRINT_LINE_PX / widest) * 100) / 100);
+}
+
 const CSS = `
 :root{color-scheme:light}
 @page{margin:15mm}
@@ -134,11 +151,12 @@ export function buildPrintDocument(i: PrintInput): string {
     i.bodyHtml !== null
       ? stripDangerousTags(i.bodyHtml)
       : `<pre class="plain">${escapeHtml(i.text)}</pre>`;
+  const scale = i.bodyHtml !== null ? printScale(i.bodyHtml) : 1;
   return (
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">` +
     `<title>${escapeHtml(subject)}</title><style>${CSS}</style></head><body>` +
     `<div class="hdr"><h1>${escapeHtml(subject)}</h1><table>${rows.join('')}</table></div>` +
-    `<div class="mail-body">${body}</div>${attachmentsHtml(i.attachments ?? [])}</body></html>`
+    `<div class="mail-body"${scale < 1 ? ` style="zoom:${scale}"` : ''}>${body}</div>${attachmentsHtml(i.attachments ?? [])}</body></html>`
   );
 }

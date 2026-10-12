@@ -1099,8 +1099,7 @@ function Notifications() {
         onChange={(v) => void set({ badgeTaskbar: v })}
       />
       <p className="hint rad-hint">
-        A red number on the Letterdock button. Windows can hide it: Settings &gt; Personalization &gt; Taskbar &gt;
-        Taskbar behaviors &gt; Show badges on taskbar apps.
+        A red number in the corner of the Letterdock icon on the taskbar. You also see it in Alt+Tab.
       </p>
       <Checkbox
         checked={settings.badgeTray}

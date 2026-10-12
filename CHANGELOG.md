@@ -3,6 +3,8 @@
 ## 0.6.11 - 2026-10-12
 ### New
 - Replied and forwarded marks: a small arrow next to the date shows mail you replied to or forwarded, also from other apps.
+### Changed
+- The buttons on a message in the list (Delete, Archive, Flag, Mark as read) now show only while the mouse is over it, not on the selected message.
 
 ## 0.6.10 - 2026-10-12
 ### Fixed

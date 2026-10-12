@@ -22,12 +22,20 @@ files:
   - '!node_modules/better-sqlite3/prebuilds/win32-arm64.node'
   - '!node_modules/better-sqlite3/lib/{darwin,linux,linuxmusl,win32-arm64}*.js'
   - '!node_modules/node-addon-api/**'
+  # koffi (taskbar overlay FFI): the prebuilt binary comes from the @koromix/koffi-win32-x64 package; its C++ sources,
+  # vendored headers and docs are not needed. src/koffi/src/*.cjs IS needed (the loader).
+  - '!node_modules/koffi/{vendor,doc,lib}/**'
+  - '!node_modules/koffi/src/koffi/src/**/*.{cc,hh,inc,c,h,S,asm,txt}'
+  - '!node_modules/@koromix/koffi-*/**/*.lib'
   - '!**/node_modules/**/*.{d.ts,d.cts,d.mts,ts.map,markdown,tsbuildinfo}'
   - '!**/node_modules/**/{docs,doc,test,tests,__tests__,example,examples,.github}/**'
   - '!**/node_modules/**/{CHANGELOG,CHANGES,HISTORY,README,readme,Readme}*'
   - '!**/node_modules/**/*.md'
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
+  # koffi and its binary package: the .node file cannot be loaded from inside app.asar.
+  - '**/node_modules/koffi/**'
+  - '**/node_modules/@koromix/**'
 # The prebuilt binary of better-sqlite3 is N-API (works in Electron as it is): no rebuild needed.
 npmRebuild: false
 # Strongest compression for the installer (slower build, smaller download).

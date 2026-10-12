@@ -39,6 +39,7 @@
     "fast-xml-parser": "^5.11.2",
     "html-to-text": "^10.0.1",
     "imapflow": "^2.2.11",
+    "koffi": "^3.3.3",
     "mailparser": "^3.9.37",
     "nodemailer": "^10.0.16",
     "pino": "^10.4.0",

@@ -1,7 +1,7 @@
 // Builds the unread-number sprite strips: build/badges/badge-<size>.png (DESIGN-SPEC 3.15).
-// Run with: npm run badges      (contact sheet of the finished icon: scripts/icon-sheet.ts, see its header)
+// Run with: npm run badges
 //
-// One strip per size (54 px: the badge inside the 96 px window icon). Each strip is a row of 99 square cells, cell n-1 is the
+// One strip per size (16/20/24/28/32/40/48 px). Each strip is a row of 99 square cells, cell n-1 is the
 // number n (1..99). Every size is drawn from vector on its own, never scaled from a master.
 // A cell is a red circle (#C42B1C) filling the square with white, anti-aliased digits.
 //
@@ -23,8 +23,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FONT_FILE = join(root, 'build', 'fonts', 'selawkb.ttf');
 const FONT_FAMILY = 'Selawik';
 const OUT_DIR = join(root, 'build', 'badges');
-// 54 = the badge diameter in the 96 px window icon (56%, src/main/iconBadge.ts; a test keeps them equal).
-export const SIZES = [54];
+export const SIZES = [16, 20, 24, 28, 32, 40, 48];
 const COUNT = 99;
 const RED = '#C42B1C';
 const SINGLE_RATIO = 0.62;

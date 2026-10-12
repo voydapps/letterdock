@@ -5,11 +5,13 @@ import {
   BrowserWindow,
   dialog,
   nativeTheme,
+  nativeImage,
   net,
   Notification,
   powerMonitor,
   protocol,
   safeStorage,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -29,9 +31,9 @@ import {
   shouldStartHidden,
 } from './background';
 import { AppTray } from './tray';
-import { UnreadBadge, badgeText, debugUnreadOverride, type BadgeWindowLike } from './unreadBadge';
-import { createWindowIcons } from './windowIcon';
-import { badgeStripsDir } from './badgeStrips';
+import { UnreadBadge, debugUnreadOverride, type BadgeWindowLike } from './unreadBadge';
+import { HiconOverlay, loadNativeOverlay } from './taskbarOverlay';
+import { badgeStripPath, badgeStripsDir, stripCropRect } from './badgeStrips';
 import { QUIT_BUTTONS, QuitState, quitPromptText, shouldAskBeforeQuit } from './quitGuard';
 import { relayUndoToMain } from './undoRelay';
 import { APP_NAME, readEnv, resolveAppUserModelId } from './buildConfig';
@@ -129,36 +131,46 @@ async function boot(): Promise<void> {
 
   // ---- tray icon (always there; close-to-tray and start-hidden depend on it) ----
   const tray = new AppTray();
-  // The unread number is part of the window icon (3.15): every window gets the app icon with the red badge in
-  // its corner, and the main window title carries the count. LETTERDOCK_DEBUG_UNREAD=<n> forces the count in a dev run.
-  const windowIcons = createWindowIcons({
-    icoPath: appIconPath(),
-    stripsDir: badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
-  });
+  // The unread number is the taskbar overlay of every window (3.15), set through ITaskbarList3 at the real pixel
+  // size of the screen; the main window title carries the count. LETTERDOCK_DEBUG_UNREAD=<n> forces the count in a dev run.
+  const stripsDir = badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });
+  const strips = new Map<number, Electron.NativeImage>();
   const forcedUnread = debugUnreadOverride(process.env, app.isPackaged);
   if (forcedUnread !== null) log.warn({ forcedUnread }, 'LETTERDOCK_DEBUG_UNREAD is set: the unread count is forced');
   const badge = new UnreadBadge(
     {
-      makeImage: (text) => {
-        const img = windowIcons.badged(text);
-        if (forcedUnread !== null && text === badgeText(forcedUnread)) {
-          // Dev only: keep a copy of the composited icon so it can be looked at.
-          try {
-            writeFileSync(join(dataDir, 'debug-badge-icon.png'), img.toPNG());
-          } catch {
-            /* a debug aid only */
-          }
+      loadOverlay: () => new HiconOverlay(loadNativeOverlay()),
+      cellPng: (text, size) => {
+        let strip = strips.get(size);
+        if (!strip) {
+          strip = nativeImage.createFromPath(badgeStripPath(stripsDir, size));
+          if (strip.isEmpty()) throw new Error(`badge strip ${size} could not be loaded`);
+          strips.set(size, strip);
         }
-        return img;
+        const cell = strip.crop(stripCropRect(size, text));
+        if (cell.isEmpty()) throw new Error(`badge cell ${text}@${size} is empty`);
+        return cell.toPNG();
       },
-      plainImage: windowIcons.plain,
+      imageFromPng: (png) => nativeImage.createFromBuffer(png),
+      getScaleFactor: (w) => {
+        try {
+          return screen.getDisplayMatching((w as unknown as BrowserWindow).getBounds()).scaleFactor;
+        } catch {
+          return screen.getPrimaryDisplay().scaleFactor;
+        }
+      },
       setTrayDot: (on) => tray.setDot(on),
-      onError: (err) => log.warn({ err: String(err) }, 'badged window icon could not be made; the plain icon stays'),
+      onMode: (mode, detail) =>
+        mode === 'native'
+          ? log.info({ detail }, 'taskbar overlay: native (ITaskbarList3 at the real size) via ' + detail)
+          : log.warn({ detail }, 'taskbar overlay: Electron fallback (16 px): ' + detail),
+      onTransientError: (err) => log.debug({ err: String(err) }, 'taskbar overlay call failed, will retry'),
       forcedCount: forcedUnread,
     },
     { badgeTaskbar: settings.get().badgeTaskbar, badgeTray: settings.get().badgeTray },
   );
-  // Compose, viewer and print windows too: the grouped taskbar button shows the icon of the window Windows picks.
+  screen.on('display-metrics-changed', () => badge.displayChanged());
+  // Compose, viewer and print windows too: the grouped taskbar button shows the overlay of the window Windows picks.
   app.on('browser-window-created', (_e, w) => badge.attachWindow(w as unknown as BadgeWindowLike));
   /** Counts are only pushed when they change, so read them once at start and after an engine restart. */
   const readBadgeCounts = () =>

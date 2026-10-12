@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.10 - 2026-10-12
+### Fixed
+- The unread number shows again on a Letterdock button that is pinned to the taskbar, and it is drawn at your screen's size, so it is sharp.
+
 ## 0.6.9 - 2026-10-12
 ### Fixed
 - The unread number is now part of the Letterdock icon on the taskbar, drawn with a real font at your screen's size, so it is sharp. It also shows in Alt+Tab.

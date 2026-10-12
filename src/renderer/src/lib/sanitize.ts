@@ -181,15 +181,15 @@ export function softBreakCells(root: ParentNode): void {
   const hits: Text[] = [];
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const t = n as Text;
-    if (t.data.length < LONG_RUN || !/S{30,}/.test(t.data)) continue;
+    if (t.data.length < LONG_RUN || !/\S{30,}/.test(t.data)) continue;
     const parent = t.parentElement;
     if (!parent || parent.closest('style,script,pre,textarea') || !parent.closest('td,th')) continue;
     hits.push(t);
   }
   for (const t of hits) {
     const frag = doc.createDocumentFragment();
-    for (const part of t.data.split(/(s+)/)) {
-      if (part.length < LONG_RUN || /^s/.test(part)) {
+    for (const part of t.data.split(/(\s+)/)) {
+      if (part.length < LONG_RUN || /^\s/.test(part)) {
         frag.append(part);
         continue;
       }

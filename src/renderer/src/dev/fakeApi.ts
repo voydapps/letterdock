@@ -172,6 +172,13 @@ function addFixture(subject: string, html: string | null, text: string | null, m
   mid++;
 }
 addFixture('Fixture: plain text "Test"', null, 'Test', 1);
+// A GitHub-style notification: a short "Status" column next to wide ones, and very long URLs (table-squeeze bug).
+addFixture(
+  'Fixture: Table with a Status column and a long URL',
+  `<div style="font-family:Arial"><p>Workflow run: all jobs have failed.</p><table style="width:100%;border-collapse:collapse" cellpadding="6"><tr style="text-align:left"><th>Status</th><th>Job</th><th>Run</th></tr><tr><td>Failed</td><td>build installer windows x64 with a long descriptive title that wraps</td><td><a href="https://example.com/runs/1">https://github.com/example-org/example-repo/actions/runs/123456789/job/987654321</a></td></tr><tr><td>Passed</td><td>lint</td><td>https://example.com/${'a'.repeat(200)}</td></tr></table><p>https://example.com/${'b'.repeat(300)}</p></div>`,
+  null,
+  1,
+);
 addFixture(
   'Fixture: Gmail simple compose',
   `<div dir="ltr"><div style="font-family:arial,helvetica,sans-serif;color:#000000">Hi Alex,<br><br>Here is the <a href="https://ok.example/plan">plan</a> we talked about. I wrote <code>npm run build</code> in the notes.</div><div><br></div><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, 5 Oct 2026 at 10:41, Jane Cooper &lt;jane@example.com&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex"><div dir="ltr" style="color:#222222">Can you send the plan before Friday?<br>Thanks!</div></blockquote></div></div>`,

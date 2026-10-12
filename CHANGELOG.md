@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.12 - 2026-10-12
+### Fixed
+- Some newsletters showed code instead of text in the preview line of the message list. The preview now shows the real text, also for mail already downloaded.
+
 ## 0.6.11 - 2026-10-12
 ### New
 - Replied and forwarded marks: a small arrow next to the date shows mail you replied to or forwarded, also from other apps.

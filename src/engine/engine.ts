@@ -22,6 +22,7 @@ import { EmlService } from './messages/emlService';
 import { ConversationService } from './messages/conversationService';
 import { RulesService } from './messages/rulesService';
 import { ThreadBackfill } from './messages/threadBackfill';
+import { SnippetRepair } from './messages/snippetRepair';
 import { ContactService } from './contacts/contactService';
 import { pruneBodyCache } from './messages/bodyCache';
 import { LightUndo } from './messages/lightShared';
@@ -78,6 +79,8 @@ export interface Engine {
   shutdown(): Promise<void>;
   /** Test hook: resolves when messages stored before conversations existed are threaded. */
   threadsReady(): Promise<void>;
+  /** Test hook: resolves when list snippets that showed code are rebuilt from stored bodies. */
+  snippetRepairReady(): Promise<void>;
 }
 
 export function createEngine(opts: EngineOptions): Engine {
@@ -139,6 +142,7 @@ export function createEngine(opts: EngineOptions): Engine {
     },
   };
   const threadBackfill = new ThreadBackfill(ctx);
+  const snippetRepair = new SnippetRepair(ctx);
   ctx.hub.threadSource = {
     keysOf: (ids) => ctx.messages.threadKeysOf(ids),
     drain: () => ctx.messages.drainTouchedThreads(),
@@ -348,6 +352,7 @@ export function createEngine(opts: EngineOptions): Engine {
     light: { snooze, pinMute, unsubscribe },
     applySettings: () => cleanBodyCache(),
     threadsReady: () => threadBackfill.whenDone(),
+    snippetRepairReady: () => snippetRepair.whenDone(),
     async handle(channel, payload) {
       const h = (handlers as Record<string, (r: unknown) => unknown>)[channel];
       if (h) return h(payload);
@@ -399,6 +404,7 @@ export function createEngine(opts: EngineOptions): Engine {
       phase('pinMute', () => pinMute.start());
       phase('snooze', () => snooze.start());
       phase('threadBackfill', () => threadBackfill.start());
+      phase('snippetRepair', () => snippetRepair.start());
       // One-time learning from the headers that are already stored (runs in small chunks).
       phase('contactsBackfill', () => {
         ctx.contacts.warmSoon();
@@ -415,6 +421,7 @@ export function createEngine(opts: EngineOptions): Engine {
       if (cacheTimer) clearInterval(cacheTimer);
       cacheTimer = null;
       threadBackfill.stop();
+      snippetRepair.stop();
       scheduled.stop();
       snooze.stop();
       ctx.contacts.stop();

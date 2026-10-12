@@ -165,6 +165,43 @@ export function proxySrcset(srcset: string): string {
     .join(', ');
 }
 
+/** An unbroken run this long inside a table cell gets soft break points (see softBreakCells). */
+const LONG_RUN = 30;
+const BREAK_EVERY = 16;
+
+/**
+ * Long unbroken text (a URL, a token) inside a table cell would make the table wider than the pane.
+ * CSS cannot fix this without side effects: overflow-wrap:anywhere (or word-break) lowers the minimum width of
+ * EVERY cell to one letter, and narrow columns such as "Status" then break letter by letter.
+ * So we add <wbr> break points only inside the long runs. Copying the text is unaffected (<wbr> has no text).
+ */
+export function softBreakCells(root: ParentNode): void {
+  const doc = (root as Node).ownerDocument ?? (root as Document);
+  const walker = doc.createTreeWalker(root as Node, 4 /* NodeFilter.SHOW_TEXT */);
+  const hits: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    if (t.data.length < LONG_RUN || !/S{30,}/.test(t.data)) continue;
+    const parent = t.parentElement;
+    if (!parent || parent.closest('style,script,pre,textarea') || !parent.closest('td,th')) continue;
+    hits.push(t);
+  }
+  for (const t of hits) {
+    const frag = doc.createDocumentFragment();
+    for (const part of t.data.split(/(s+)/)) {
+      if (part.length < LONG_RUN || /^s/.test(part)) {
+        frag.append(part);
+        continue;
+      }
+      for (let i = 0; i < part.length; i += BREAK_EVERY) {
+        if (i > 0) frag.append(doc.createElement('wbr'));
+        frag.append(part.slice(i, i + BREAK_EVERY));
+      }
+    }
+    t.replaceWith(frag);
+  }
+}
+
 function processTree(root: HTMLElement, blockRemote: boolean, cid: Record<string, string>): void {
   root.querySelectorAll('style').forEach((st) => {
     const cleaned = cleanCss(st.textContent ?? '', blockRemote, false);
@@ -210,6 +247,7 @@ function processTree(root: HTMLElement, blockRemote: boolean, cid: Record<string
     else el.removeAttribute('background');
   });
   root.querySelectorAll('[poster]').forEach((el) => el.removeAttribute('poster'));
+  softBreakCells(root);
 }
 
 function detectRemote(root: HTMLElement): boolean {
@@ -251,7 +289,7 @@ export function sanitizeEmailHtml(raw: string, cid: Record<string, string> = {},
 
 // The frame height must follow the content, never the pane: height:auto!important beats sender rules.
 const BASE_CSS =
-  'html,body{margin:0;padding:0;height:auto!important;min-height:0!important}body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;background:#fff;word-wrap:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}a{color:#0f6cbd}';
+  'html,body{margin:0;padding:0;height:auto!important;min-height:0!important}body{font-family:"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;background:#fff;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}a{color:#0f6cbd}';
 
 export interface FrameTheme {
   /** Extra CSS, added after the base CSS. */

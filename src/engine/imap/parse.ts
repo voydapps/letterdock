@@ -109,6 +109,8 @@ export interface SnippetPart {
   type: string;
   encoding: string;
   charset: string | null;
+  /** The HTML leaf next to a plain-text one: used when the plain text gives no usable snippet. */
+  fallback?: SnippetPart;
 }
 
 /** The part to peek at for a list snippet: first plain-text leaf, else first HTML leaf. */
@@ -117,7 +119,6 @@ export function pickSnippetPart(root: StructLike | undefined): SnippetPart | nul
   let html: SnippetPart | null = null;
   let found: SnippetPart | null = null;
   const walk = (n: StructLike): void => {
-    if (found) return;
     if (n.childNodes?.length) {
       n.childNodes.forEach(walk);
       return;
@@ -131,10 +132,11 @@ export function pickSnippetPart(root: StructLike | undefined): SnippetPart | nul
       encoding: n.encoding ?? '7bit',
       charset: n.parameters?.charset ?? null,
     };
-    if (type === 'text/plain') found = sp;
+    if (type === 'text/plain') found ??= sp;
     else html ??= sp;
   };
   walk(root);
+  if (found && html) (found as SnippetPart).fallback = html;
   return found ?? html;
 }
 

@@ -11,7 +11,7 @@ import type {
 } from '../../../shared/ipc';
 import { AppException } from '../../../shared/errors';
 import type { ContactSource } from '../../contacts/contactService';
-import { ftsText } from '../../messages/bodyUtils';
+import { BROKEN_SNIPPET_LIKE, ftsText } from '../../messages/bodyUtils';
 import { normalizeSubject } from '../../messages/threading';
 import type { Statement } from 'better-sqlite3';
 import type { Db } from '../connection';
@@ -424,6 +424,44 @@ export class MessageRepo {
     const upd = this.db.prepare("UPDATE message SET snippet=? WHERE id=? AND body_state='none'");
     this.db.transaction(() => {
       for (const it of items) upd.run(it.snippet, it.id);
+    })();
+  }
+
+  /**
+   * Downloaded messages (id > afterId) whose stored list snippet looks like code (see
+   * BROKEN_SNIPPET_LIKE), with the body they were made from. For the SnippetRepair job.
+   */
+  brokenCachedSnippets(
+    afterId: number,
+    limit: number,
+  ): { id: number; folderId: number; text: string | null; html: string | null }[] {
+    const cond = BROKEN_SNIPPET_LIKE.map(() => 'm.snippet LIKE ?').join(' OR ');
+    return (
+      this.db
+        .prepare(
+          `SELECT m.id AS id, m.folder_id AS folderId, b.text_plain AS text, b.html AS html
+             FROM message m JOIN body b ON b.message_pk = m.id
+            WHERE m.id > ? AND m.body_state = 'cached' AND m.snippet <> '' AND (${cond})
+            ORDER BY m.id LIMIT ?`,
+        )
+        .all(afterId, ...BROKEN_SNIPPET_LIKE, limit) as {
+        id: number;
+        folderId: number;
+        text: string | null;
+        html: string | null;
+      }[]
+    );
+  }
+
+  /** Replace the stored list snippet (and its search index copy) of downloaded messages. */
+  rewriteSnippets(items: { id: MessageId; snippet: string }[]): void {
+    const upd = this.db.prepare("UPDATE message SET snippet=? WHERE id=? AND body_state='cached'");
+    const fts = this.db.prepare('UPDATE message_fts SET snippet=? WHERE rowid=?');
+    this.db.transaction(() => {
+      for (const it of items) {
+        upd.run(it.snippet, it.id);
+        fts.run(it.snippet, it.id);
+      }
     })();
   }
 

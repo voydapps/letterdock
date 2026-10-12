@@ -38,6 +38,47 @@ export async function snippetOf(part: SnippetPart, bytes: Buffer, truncated = fa
   return makeSnippet(parsed.text ?? null, null);
 }
 
+type Own = (uid: number) => SnippetPart | undefined;
+
+/**
+ * Peek at one body part of these messages. HTML gets a second, bigger peek when the first showed no
+ * text. Returns the snippets found and the uids that fetched fine but have no usable text.
+ */
+async function peekGroup(
+  client: ImapFlow,
+  key: string,
+  uids: number[],
+  own: Own,
+  fallbackSize: boolean,
+  idByUid: Map<number, number>,
+): Promise<{ got: { id: number; uid: number; snippet: string }[]; empty: number[] }> {
+  const got: { id: number; uid: number; snippet: string }[] = [];
+  const empty: number[] = [];
+  let pending = uids;
+  for (const maxLength of fallbackSize ? [PEEK_BYTES, PEEK_BYTES_HTML] : [PEEK_BYTES]) {
+    if (pending.length === 0) break;
+    const rows = (await client.fetchAll(
+      toSequenceSet(pending),
+      { uid: true, bodyParts: [{ key, start: 0, maxLength }] },
+      { uid: true },
+    )) as unknown as { uid: number; bodyParts?: Map<string, Buffer> }[];
+    const again: number[] = [];
+    for (const r of rows) {
+      const buf = r.bodyParts?.get(key.toLowerCase()) ?? r.bodyParts?.get(key);
+      const id = idByUid.get(r.uid);
+      const part = own(r.uid);
+      if (!buf || id === undefined || !part) continue;
+      const truncated = buf.length >= maxLength;
+      const snippet = await snippetOf(part, buf, truncated).catch(() => '');
+      if (snippet) got.push({ id, uid: r.uid, snippet });
+      else if (truncated && part.type === 'text/html' && maxLength < PEEK_BYTES_HTML) again.push(r.uid);
+      else empty.push(r.uid);
+    }
+    pending = again;
+  }
+  return { got, empty };
+}
+
 /** `fetched` are header rows just upserted; `ids` maps uid -> message id for the added rows. */
 export async function fillSnippets(
   ctx: EngineContext,
@@ -47,43 +88,51 @@ export async function fillSnippets(
   /** Set to `failed: true` when a server fetch failed (the rows may work next time). */
   stats?: { failed: boolean },
 ): Promise<number[]> {
+  const parts = new Map<number, SnippetPart>();
   const byKey = new Map<string, { part: SnippetPart; uids: number[] }>();
   for (const m of fetched) {
     if (!idByUid.has(m.uid)) continue;
     const part = pickSnippetPart(m.bodyStructure);
     if (!part) continue;
+    parts.set(m.uid, part);
     const g = byKey.get(part.part) ?? { part, uids: [] };
     g.uids.push(m.uid);
     byKey.set(part.part, g);
   }
   const out: { id: number; snippet: string }[] = [];
+  // Messages whose plain-text part gave nothing usable (empty, or code): try their HTML part.
+  const fallbacks = new Map<string, { part: SnippetPart; uids: number[] }>();
   for (const [key, g] of byKey) {
     try {
-      let pending = g.uids;
-      for (const maxLength of [PEEK_BYTES, PEEK_BYTES_HTML]) {
-        if (pending.length === 0) break;
-        const rows = (await client.fetchAll(
-          toSequenceSet(pending),
-          { uid: true, bodyParts: [{ key, start: 0, maxLength }] },
-          { uid: true },
-        )) as unknown as { uid: number; bodyParts?: Map<string, Buffer> }[];
-        const again: number[] = [];
-        for (const r of rows) {
-          const buf = r.bodyParts?.get(key.toLowerCase()) ?? r.bodyParts?.get(key);
-          const id = idByUid.get(r.uid);
-          if (!buf || id === undefined) continue;
-          // Per-message encoding/charset can differ inside one group; use that message's own part.
-          const own = pickSnippetPart(fetched.find((f) => f.uid === r.uid)?.bodyStructure) ?? g.part;
-          const truncated = buf.length >= maxLength;
-          const snippet = await snippetOf(own, buf, truncated).catch(() => '');
-          if (snippet) out.push({ id, snippet });
-          else if (truncated && own.type === 'text/html' && maxLength < PEEK_BYTES_HTML) again.push(r.uid);
-        }
-        pending = again;
+      // Per-message encoding/charset can differ inside one group; use that message's own part.
+      const res = await peekGroup(client, key, g.uids, (uid) => parts.get(uid) ?? g.part, g.part.type === 'text/html', idByUid);
+      for (const r of res.got) out.push({ id: r.id, snippet: r.snippet });
+      for (const uid of res.empty) {
+        const fb = parts.get(uid)?.fallback;
+        if (!fb) continue;
+        const f = fallbacks.get(fb.part) ?? { part: fb, uids: [] };
+        f.uids.push(uid);
+        fallbacks.set(fb.part, f);
       }
     } catch (e) {
       if (stats) stats.failed = true;
       ctx.log.debug({ err: (e as Error).message }, 'snippet peek failed');
+    }
+  }
+  for (const [key, g] of fallbacks) {
+    try {
+      const res = await peekGroup(
+        client,
+        key,
+        g.uids,
+        (uid) => parts.get(uid)?.fallback ?? g.part,
+        true,
+        idByUid,
+      );
+      for (const r of res.got) out.push({ id: r.id, snippet: r.snippet });
+    } catch (e) {
+      if (stats) stats.failed = true;
+      ctx.log.debug({ err: (e as Error).message }, 'snippet fallback peek failed');
     }
   }
   if (out.length > 0) ctx.messages.setSnippets(out);

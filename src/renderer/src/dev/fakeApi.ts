@@ -858,6 +858,9 @@ function fakeConversationRows(scope: { kind: string; folderId?: number; accountI
       unreadCount: list.filter((m) => !m.seen).length,
       hasFlag: list.some((m) => m.flagged),
       hasAttachment: list.some((m) => m.hasAttachments),
+      // From the newest message only (DESIGN-SPEC 3.16).
+      ...(latest.answered ? { answered: true as const } : {}),
+      ...(latest.forwarded ? { forwarded: true as const } : {}),
       participants: [...new Map([...list].reverse().map((m) => [m.from?.address ?? '?', { name: m.from?.name ?? null, address: m.from?.address ?? '?', isMe: own.has((m.from?.address ?? '').toLowerCase()), hasUnread: list.some((x) => x.from?.address === m.from?.address && !x.seen) }])).values()],
       latest: { id: latest.id, subject: latest.subject, title: plainSubject(latest.subject), snippet: latest.snippet, date: latest.date, fromMe: own.has((latest.from?.address ?? '').toLowerCase()), from: latest.from },
       folderMessageIds: list.filter(inScope).map((m) => m.id),

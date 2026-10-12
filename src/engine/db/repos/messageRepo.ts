@@ -77,6 +77,8 @@ export interface MessageRow {
   flag_seen: number;
   flag_flagged: number;
   flag_answered: number;
+  /** Local mark (DESIGN-SPEC 3.16): we forwarded it, or the server has `$Forwarded`. Sync never clears it. */
+  flag_forwarded: number;
   flag_draft: number;
   flag_deleted: number;
   keywords_json: string;
@@ -136,6 +138,11 @@ function parseAddrs(json: string): Address[] {
   }
 }
 
+/** The server reports the `$Forwarded` keyword (any case). */
+function hasForwardedKeyword(keywords: string[]): boolean {
+  return keywords.some((k) => k.toLowerCase() === '$forwarded');
+}
+
 export function rowToHeader(r: MessageRow): MessageHeader {
   const draftExtra: Pick<MessageHeader, 'localOnly' | 'draftSync'> =
     r.flag_draft === 1
@@ -168,6 +175,7 @@ export function rowToHeader(r: MessageRow): MessageHeader {
     // Tiny flags, only present when set (DESIGN-SPEC 3.13: a few integers per row, nothing else).
     ...(r.pinned_at ? { pinned: true } : {}),
     ...(r.muted === 1 ? { muted: true } : {}),
+    ...(r.flag_forwarded === 1 ? { forwarded: true } : {}),
     ...(r.snooze_returned_at ? { snoozeReturnedAt: r.snooze_returned_at } : {}),
     ...(r.snoozed_until ? { snoozedUntil: r.snoozed_until } : {}),
   };
@@ -321,16 +329,16 @@ export class MessageRepo {
     const insert = this.db.prepare(
       `INSERT INTO message (account_id,folder_id,uid,message_id,in_reply_to,references_h,thread_key,subject,
          from_name,from_addr,to_json,cc_json,bcc_json,reply_to_json,date_ms,internal_ms,size,
-         flag_seen,flag_flagged,flag_answered,flag_draft,flag_deleted,keywords_json,modseq,has_attachments,
+         flag_seen,flag_flagged,flag_answered,flag_forwarded,flag_draft,flag_deleted,keywords_json,modseq,has_attachments,
          thread_id,subject_norm)
        VALUES (@accountId,@folderId,@uid,@messageId,@inReplyTo,@references,@threadKey,@subject,
          @fromName,@fromAddr,@to,@cc,@bcc,@replyTo,@dateMs,@internalMs,@size,
-         @seen,@flagged,@answered,@draft,@deleted,@keywords,@modseq,@hasAttachments,
+         @seen,@flagged,@answered,@forwarded,@draft,@deleted,@keywords,@modseq,@hasAttachments,
          @threadId,@subjectNorm)`,
     );
     const updateFlags = this.db.prepare(
-      `UPDATE message SET flag_seen=?, flag_flagged=?, flag_answered=?, flag_draft=?, flag_deleted=?,
-         keywords_json=?, modseq=? WHERE id=?`,
+      `UPDATE message SET flag_seen=?, flag_flagged=?, flag_answered=?, flag_forwarded=MAX(flag_forwarded, ?),
+         flag_draft=?, flag_deleted=?, keywords_json=?, modseq=? WHERE id=?`,
     );
     const tx = this.db.transaction(() => {
       for (const h of rows) {
@@ -340,6 +348,7 @@ export class MessageRepo {
             h.flags.seen ? 1 : 0,
             h.flags.flagged ? 1 : 0,
             h.flags.answered ? 1 : 0,
+            hasForwardedKeyword(h.flags.keywords) ? 1 : 0,
             h.flags.draft ? 1 : 0,
             h.flags.deleted ? 1 : 0,
             JSON.stringify(h.flags.keywords),
@@ -388,6 +397,7 @@ export class MessageRepo {
           seen: h.flags.seen ? 1 : 0,
           flagged: h.flags.flagged ? 1 : 0,
           answered: h.flags.answered ? 1 : 0,
+          forwarded: hasForwardedKeyword(h.flags.keywords) ? 1 : 0,
           draft: h.flags.draft ? 1 : 0,
           deleted: h.flags.deleted ? 1 : 0,
           keywords: JSON.stringify(h.flags.keywords),
@@ -471,8 +481,9 @@ export class MessageRepo {
   ): MessageId[] {
     const ids: MessageId[] = [];
     const stmt = this.db.prepare(
-      `UPDATE message SET flag_seen=?, flag_flagged=?, flag_answered=?, flag_draft=?, flag_deleted=?,
-         keywords_json=?, modseq=COALESCE(?, modseq) WHERE folder_id=? AND uid=? RETURNING id`,
+      `UPDATE message SET flag_seen=?, flag_flagged=?, flag_answered=?, flag_forwarded=MAX(flag_forwarded, ?),
+         flag_draft=?, flag_deleted=?, keywords_json=?, modseq=COALESCE(?, modseq)
+         WHERE folder_id=? AND uid=? RETURNING id`,
     );
     this.db.transaction(() => {
       for (const c of changes) {
@@ -480,6 +491,7 @@ export class MessageRepo {
           c.flags.seen ? 1 : 0,
           c.flags.flagged ? 1 : 0,
           c.flags.answered ? 1 : 0,
+          hasForwardedKeyword(c.flags.keywords) ? 1 : 0,
           c.flags.draft ? 1 : 0,
           c.flags.deleted ? 1 : 0,
           JSON.stringify(c.flags.keywords),
@@ -973,7 +985,7 @@ export class MessageRepo {
 
   setFlagColumn(
     ids: MessageId[],
-    column: 'flag_seen' | 'flag_flagged' | 'flag_answered' | 'flag_deleted',
+    column: 'flag_seen' | 'flag_flagged' | 'flag_answered' | 'flag_forwarded' | 'flag_deleted',
     value: boolean,
   ): MessageId[] {
     const changed: MessageId[] = [];

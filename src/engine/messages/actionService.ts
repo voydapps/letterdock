@@ -1444,10 +1444,10 @@ export class ActionService implements PendingOpsApi {
   markReplied(rowId: MessageId, kind: 'answered' | 'forwarded'): void {
     const row = this.ctx.messages.row(rowId);
     if (!row) return;
-    if (kind === 'answered') {
-      this.ctx.messages.setFlagColumn([rowId], 'flag_answered', true);
-      this.ctx.hub.changed({ folderIds: [row.folder_id], updated: [rowId] });
-    }
+    // The local mark is the source of truth for the list (DESIGN-SPEC 3.16): a server that refuses
+    // the flag (Gmail and custom keywords) never clears it. `.eml` file replies have no row: no mark.
+    this.ctx.messages.setFlagColumn([rowId], kind === 'answered' ? 'flag_answered' : 'flag_forwarded', true);
+    this.ctx.hub.changed({ folderIds: [row.folder_id], updated: [rowId] });
     this.queue.addRaw(row.account_id, 'replied', {
       msgId: row.id,
       mid: row.message_id,

@@ -187,6 +187,7 @@ export function buildDemo(now: number): Demo {
     body?: DemoBody;
     to?: Address[];
     answered?: boolean;
+    forwarded?: boolean;
   }
   function add(acc: string, role: string, minutesAgo: number, from: Address, subject: string, snippet: string, o: Opt = {}): number {
     const f = folderOf(acc, role);
@@ -207,6 +208,7 @@ export function buildDemo(now: number): Demo {
       seen: o.seen ?? true,
       flagged: o.flagged ?? false,
       answered: o.answered ?? false,
+      ...(o.forwarded ? { forwarded: true as const } : {}),
       draft: role === 'drafts',
       hasAttachments: !!o.att?.length,
       size: 6000,
@@ -222,7 +224,7 @@ export function buildDemo(now: number): Demo {
   // -- the first eight rows of the unified inbox (3 unread) --
   add('a1', 'inbox', 14, P.bright, '5 small habits that actually stick', 'Big plans fade by February. Tiny ones survive. This week we asked readers which habits lasted more than a year...', { body: { html: brightloopHtml, text: null } });
   const weekend = 'Weekend plans';
-  const w1 = add('a1', 'inbox', 2 * DAY / MIN + 3 * H, P.ben, weekend, 'Hey Anna, are you free on Saturday? I am thinking of a hike at Cedar Ridge, then lunch.');
+  const w1 = add('a1', 'inbox', 2 * DAY / MIN + 3 * H, P.ben, weekend, 'Hey Anna, are you free on Saturday? I am thinking of a hike at Cedar Ridge, then lunch.', { answered: true });
   add('a1', 'sent', 2 * DAY / MIN + 2 * H, me('a1'), `Re: ${weekend}`, 'Saturday works for me. What time would you leave? I can bring sandwiches.', { to: [P.ben] });
   const w3 = add('a1', 'inbox', DAY / MIN + 4 * H, P.ben, `Re: ${weekend}`, 'Let us meet at 9 at the trailhead parking. Mia is in. Tom is checking his shifts.');
   const w4 = add('a1', 'inbox', 38, P.ben, `Re: ${weekend}`, 'Tom is in too! The weather looks good, around 18 degrees. Bring a jacket just in case.', { seen: false });
@@ -240,7 +242,7 @@ export function buildDemo(now: number): Demo {
   });
 
   const q3 = 'Q3 report: final numbers';
-  add('a2', 'inbox', 20 * H, P.tom, q3, 'Hi Anna, the final Q3 numbers are in the shared sheet. Please check the travel line before we send it on.');
+  add('a2', 'inbox', 20 * H, P.tom, q3, 'Hi Anna, the final Q3 numbers are in the shared sheet. Please check the travel line before we send it on.', { answered: true });
   add('a2', 'sent', 18 * H, me('a2'), `Re: ${q3}`, 'Thanks Tom. The travel line looks right to me. I will send the summary to Priya this afternoon.', { to: [P.tom] });
   const q3c = add('a2', 'inbox', 52, P.tom, `Re: ${q3}`, 'Great, thank you. Priya is happy with it. We can present on Thursday.', { answered: false });
   // A Gmail-style reply: the quote is a .gmail_quote block (folded behind a "..." button).
@@ -255,12 +257,12 @@ export function buildDemo(now: number): Demo {
   add('a2', 'inbox', 70, P.priya, 'Invoice #1187 for October', 'Hi Anna, please find the invoice for October attached. Payment is due in 14 days.', { seen: false, att: pdf('invoice-1187.pdf') });
   add('a1', 'inbox', 120, P.pine, 'Spring menu is here: try the rosemary loaf', 'Warm rosemary loaf, lemon buns and our new honey oat bread. Baked every morning from 6 am.', { seen: false, body: { html: pinewoodHtml, text: null } });
   add('a1', 'inbox', 180, P.lib, 'Your hold is ready for pickup', 'Hello Anna, the book you reserved, The Quiet Orchard, is waiting at the front desk.', { body: { html: libraryHtml, text: null, remoteImages: true } });
-  add('a1', 'inbox', 300, P.mia, 'Photos from the lake', 'Here are the best ones from last weekend. The sunset one is my favourite!', { att: [{ filename: 'lake-sunset.jpg', contentType: 'image/jpeg', size: 1_240_000 }, { filename: 'lake-group.jpg', contentType: 'image/jpeg', size: 980_000 }] });
+  add('a1', 'inbox', 300, P.mia, 'Photos from the lake', 'Here are the best ones from last weekend. The sunset one is my favourite!', { forwarded: true, att: [{ filename: 'lake-sunset.jpg', contentType: 'image/jpeg', size: 1_240_000 }, { filename: 'lake-group.jpg', contentType: 'image/jpeg', size: 980_000 }] });
   add('a2', 'inbox', 360, P.lena, 'Team lunch on Friday?', 'Shall we book the Italian place near the office? Twelve people so far.');
 
   // -- older mail from every account (12 more unread, so All inboxes shows 15) --
   const older: [string, number, Address, string, string, Opt?][] = [
-    ['a3', 7 * H, P.marco, "Dinner at Nonna's on Sunday", 'Nonna is making lasagne again. Can you bring the dessert? We start at one.', { seen: false }],
+    ['a3', 7 * H, P.marco, "Dinner at Nonna's on Sunday", 'Nonna is making lasagne again. Can you bring the dessert? We start at one.', { seen: false, forwarded: true }],
     ['a4', 8 * H, P.dana, 'Saturday ride: route and meeting point', 'We meet at the old mill at 8:30. The route is 45 km, mostly flat. Bring water.', { seen: false }],
     ['a1', 10 * H, P.shop, 'Your parcel is on its way', 'Good news: your order left our warehouse today. Track it with the number below.', { seen: false }],
     ['a3', 22 * H, P.school, 'School trip form to sign', 'Please sign and return the form for the museum trip by Friday.', { seen: false, att: pdf('trip-form.pdf', 92_000) }],
@@ -268,16 +270,16 @@ export function buildDemo(now: number): Demo {
     ['a4', 26 * H, P.cycle, 'Membership renewal reminder', 'Your Cedar Ridge Cycling Club membership ends on 31 October. Renew online in two minutes.', { seen: false }],
     ['a1', 28 * H, P.lark, 'Invoice INV-2041 from Larkspur Studio', 'Thank you for your order. The invoice for the logo refresh is attached.', { att: pdf('INV-2041.pdf') }],
     ['a3', 30 * H, P.marco, 'Gift ideas for Grandma', 'I made a list of ideas in our family note. The scarf is my top pick, what do you think?', { seen: false }],
-    ['a2', 32 * H, P.priya, 'Please review: Q4 plan draft', 'I put the draft in the shared folder. Comments are welcome until Wednesday evening.', { seen: false }],
+    ['a2', 32 * H, P.priya, 'Please review: Q4 plan draft', 'I put the draft in the shared folder. Comments are welcome until Wednesday evening.', { seen: false, answered: true }],
     ['a4', 40 * H, P.dana, 'Volunteer rota for the autumn ride', 'We still need two people for the rest stop. Reply if you can help.', { seen: false }],
-    ['a1', 48 * H, P.mia, 'Birthday plans', 'I would love to see you on the 24th. Small dinner at my place, nothing fancy.', { flagged: true }],
+    ['a1', 48 * H, P.mia, 'Birthday plans', 'I would love to see you on the 24th. Small dinner at my place, nothing fancy.', { flagged: true, answered: true, forwarded: true }],
     ['a3', 50 * H, P.school, 'Invoice for the school trip', 'The invoice for the museum trip is attached. Payment can be made at the front desk.', { att: pdf('school-trip-invoice.pdf', 76_000) }],
     ['a2', 52 * H, P.harbor, 'Reminder: invoice 1163 is due Friday', 'This is a friendly reminder that invoice 1163 for the printed flyers is due on Friday.', {}],
     ['a4', 56 * H, P.dana, 'Club newsletter: October', 'Ride results, new members and the winter schedule. Enjoy the read!', { seen: false }],
     ['a1', 60 * H, P.pine, 'Receipt for order 5521', 'Thank you for your order. Your receipt is below. See you at the bakery!', {}],
     ['a2', 70 * H, P.lena, 'Meeting notes: planning call', 'Notes from Monday are in the shared folder. Action items are marked in yellow.', { seen: false }],
     ['a3', 74 * H, P.marco, 'Photos from the picnic', 'Here are the photos from the picnic. Aunt Rosa is in half of them.', { seen: false, att: [{ filename: 'picnic-1.jpg', contentType: 'image/jpeg', size: 1_100_000 }] }],
-    ['a1', 80 * H, P.ben, 'Book you asked about', 'It is called The Quiet Orchard. I think you will like it.', {}],
+    ['a1', 80 * H, P.ben, 'Book you asked about', 'It is called The Quiet Orchard. I think you will like it.', { answered: true }],
   ];
   for (const [acc, ago, from, subject, snippet, o] of older) add(acc, 'inbox', ago, from, subject, snippet, o);
 

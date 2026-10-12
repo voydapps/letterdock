@@ -12,6 +12,7 @@ import rawSource from './011_raw_source.sql?raw';
 import draftTombstone from './012_draft_tombstone.sql?raw';
 import lightFeatures from './013_light_features.sql?raw';
 import accountInUnified from './014_account_in_unified.sql?raw';
+import forwardedFlag from './015_forwarded_flag.sql?raw';
 
 export interface Migration {
   version: number;
@@ -34,4 +35,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, sql: draftTombstone },
   { version: 13, sql: lightFeatures },
   { version: 14, sql: accountInUnified },
+  { version: 15, sql: forwardedFlag },
 ];

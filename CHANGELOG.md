@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.11 - 2026-10-12
+### New
+- Replied and forwarded marks: a small arrow next to the date shows mail you replied to or forwarded, also from other apps.
+
 ## 0.6.10 - 2026-10-12
 ### Fixed
 - The unread number shows again on a Letterdock button that is pinned to the taskbar, and it is drawn at your screen's size, so it is sharp.

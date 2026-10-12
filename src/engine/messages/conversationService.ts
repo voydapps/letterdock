@@ -518,6 +518,9 @@ export class ConversationService {
       messageIds: msgs.map((m) => m.id),
       ...(all.some((x) => x.pinned_at !== null && view(x)) ? { pinned: true } : {}),
       ...(msgs.some((m) => m.muted === 1) ? { muted: true } : {}),
+      // DESIGN-SPEC 3.16: from the newest message only; a new incoming reply clears the "Replied" mark.
+      ...(latest.flag_answered === 1 ? { answered: true as const } : {}),
+      ...(latest.flag_forwarded === 1 ? { forwarded: true as const } : {}),
       ...returnedFlag(msgs),
     };
   }

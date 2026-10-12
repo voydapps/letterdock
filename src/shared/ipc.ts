@@ -134,6 +134,8 @@ export interface MessageHeader {
   hasAttachments: boolean;
   size: number | null;
   bodyCached: boolean;
+  /** You forwarded it (or the server says `$Forwarded`). Present only when true (DESIGN-SPEC 3.16). */
+  forwarded?: true;
   /**
    * Drafts only (absent on other messages). True while the latest text of this draft exists only
    * on this PC (not yet on the server). Optional, so older code keeps working.
@@ -223,6 +225,12 @@ export interface ConversationRow {
   unreadCount: number;
   hasFlag: boolean;
   hasAttachment: boolean;
+  /**
+   * The LATEST message of the conversation was replied to / forwarded (so a new incoming reply
+   * removes the mark). Present only when true (DESIGN-SPEC 3.16).
+   */
+  answered?: true;
+  forwarded?: true;
   /** Distinct senders, most recent first. The UI shows the first 3 and "+N". */
   participants: ConversationParticipant[];
   /** The newest message of the conversation (in the folders this view includes). */

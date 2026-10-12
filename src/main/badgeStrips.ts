@@ -2,17 +2,15 @@
 // build/badges/badge-<size>.png (made by scripts/build-badges.mjs) is a row of 99 square cells; cell n-1 is the
 // number n. Packaged: <resources>/badges (extraResources). Development: <repo>/build/badges.
 import { join } from 'node:path';
+import { ICON_BASE_PX, badgeDiameter } from './iconBadge';
 
-/** Sizes of the strips, in physical pixels. */
-export const BADGE_STRIP_SIZES = [16, 20, 24, 28, 32, 40, 48] as const;
-export const BADGE_DIP = 16;
 /**
- * The most pixels Electron 44 passes on to Windows. `NativeWindowViews::SetOverlayIcon` takes the 1x bitmap and
- * `TaskbarHost::SetOverlayIcon` (shell/browser/ui/win/taskbar_host.cc, `kOverlayIconSize = 16`) Lanczos-resizes it to
- * 16x16 and clips it to a circle. So a bigger bitmap is only shrunk again, which makes it softer than the 16 px
- * strip. Raise this (or pass Infinity) when Electron can send a bigger overlay.
+ * Strip sizes, in physical pixels. The badge is composited into a 96 px icon, where it is 54 px, and the cell is
+ * used as it is, never resampled. The test in unreadBadge.test.ts keeps this in step with iconBadge.ts.
  */
-export const OVERLAY_MAX_PX = 16;
+export const BADGE_STRIP_SIZES = [54] as const;
+/** The strip size the window icon needs. */
+export const ICON_BADGE_PX = badgeDiameter(ICON_BASE_PX);
 
 export function badgeStripsDir(o: { isPackaged: boolean; resourcesPath: string; appPath: string }): string {
   return o.isPackaged ? join(o.resourcesPath, 'badges') : join(o.appPath, 'build', 'badges');
@@ -20,23 +18,6 @@ export function badgeStripsDir(o: { isPackaged: boolean; resourcesPath: string; 
 
 export function badgeStripPath(dir: string, size: number): string {
   return join(dir, `badge-${size}.png`);
-}
-
-/** Pixels needed for a 16 DIP overlay on a screen with this scale factor. */
-export function badgePx(scaleFactor: number): number {
-  const sf = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
-  return Math.round(BADGE_DIP * sf);
-}
-
-/** The smallest strip size that is at least `px`; the largest one when `px` is bigger than all of them. */
-export function pickBadgeSize(px: number): number {
-  for (const s of BADGE_STRIP_SIZES) if (s >= px) return s;
-  return BADGE_STRIP_SIZES[BADGE_STRIP_SIZES.length - 1];
-}
-
-/** Strip size for a scale factor, limited to what Windows will really show (`cap`). */
-export function overlaySize(scaleFactor: number, cap: number = OVERLAY_MAX_PX): number {
-  return pickBadgeSize(Math.min(badgePx(scaleFactor), cap));
 }
 
 /** Where the number `text` ('1'..'99') is in a strip of `size`-pixel cells. */

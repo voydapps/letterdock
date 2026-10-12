@@ -6,8 +6,6 @@ import {
   dialog,
   nativeTheme,
   net,
-  nativeImage,
-  screen,
   Notification,
   powerMonitor,
   protocol,
@@ -31,8 +29,9 @@ import {
   shouldStartHidden,
 } from './background';
 import { AppTray } from './tray';
-import { UnreadBadge, buildBadgeImage } from './unreadBadge';
-import { badgeStripPath, badgeStripsDir, stripCropRect } from './badgeStrips';
+import { UnreadBadge, badgeText, debugUnreadOverride, type BadgeWindowLike } from './unreadBadge';
+import { createWindowIcons } from './windowIcon';
+import { badgeStripsDir } from './badgeStrips';
 import { QUIT_BUTTONS, QuitState, quitPromptText, shouldAskBeforeQuit } from './quitGuard';
 import { relayUndoToMain } from './undoRelay';
 import { APP_NAME, readEnv, resolveAppUserModelId } from './buildConfig';
@@ -130,43 +129,37 @@ async function boot(): Promise<void> {
 
   // ---- tray icon (always there; close-to-tray and start-hidden depend on it) ----
   const tray = new AppTray();
-  // Red number on the taskbar button and red dot on the tray icon (3.15).
-  const badgeStrips = new Map<number, Electron.NativeImage>();
+  // The unread number is part of the window icon (3.15): every window gets the app icon with the red badge in
+  // its corner, and the main window title carries the count. LETTERDOCK_DEBUG_UNREAD=<n> forces the count in a dev run.
+  const windowIcons = createWindowIcons({
+    icoPath: appIconPath(),
+    stripsDir: badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+  });
+  const forcedUnread = debugUnreadOverride(process.env, app.isPackaged);
+  if (forcedUnread !== null) log.warn({ forcedUnread }, 'LETTERDOCK_DEBUG_UNREAD is set: the unread count is forced');
   const badge = new UnreadBadge(
     {
-      getWindow: () => mainWindow,
-      setTrayDot: (on) => tray.setDot(on),
-      // Crop the number from the pre-rendered strip of this pixel size (scale factor 1: Electron only uses the 1x bitmap).
-      makeImage: (text, px) => {
-        let strip = badgeStrips.get(px);
-        if (!strip) {
-          strip = nativeImage.createFromPath(
-            badgeStripPath(
-              badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
-              px,
-            ),
-          );
-          if (strip.isEmpty()) throw new Error(`badge strip ${px} could not be loaded`);
-          badgeStrips.set(px, strip);
+      makeImage: (text) => {
+        const img = windowIcons.badged(text);
+        if (forcedUnread !== null && text === badgeText(forcedUnread)) {
+          // Dev only: keep a copy of the composited icon so it can be looked at.
+          try {
+            writeFileSync(join(dataDir, 'debug-badge-icon.png'), img.toPNG());
+          } catch {
+            /* a debug aid only */
+          }
         }
-        const img = strip.crop(stripCropRect(px, text));
-        if (img.isEmpty()) throw new Error(`badge cell ${text}@${px} is empty`);
         return img;
       },
-      fallbackImage: (text) => buildBadgeImage({ fromBitmap: (b, o) => nativeImage.createFromBitmap(b, o) }, text),
-      onFallback: (err) => log.warn({ err: String(err) }, 'badge strips missing, drawing the number from pixels'),
-      getScaleFactor: (w) => {
-        const bw = w as unknown as BrowserWindow;
-        try {
-          return screen.getDisplayMatching(bw.getBounds()).scaleFactor;
-        } catch {
-          return screen.getPrimaryDisplay().scaleFactor;
-        }
-      },
+      plainImage: windowIcons.plain,
+      setTrayDot: (on) => tray.setDot(on),
+      onError: (err) => log.warn({ err: String(err) }, 'badged window icon could not be made; the plain icon stays'),
+      forcedCount: forcedUnread,
     },
     { badgeTaskbar: settings.get().badgeTaskbar, badgeTray: settings.get().badgeTray },
   );
-  screen.on('display-metrics-changed', () => badge.displayChanged());
+  // Compose, viewer and print windows too: the grouped taskbar button shows the icon of the window Windows picks.
+  app.on('browser-window-created', (_e, w) => badge.attachWindow(w as unknown as BadgeWindowLike));
   /** Counts are only pushed when they change, so read them once at start and after an engine restart. */
   const readBadgeCounts = () =>
     void engine
@@ -512,7 +505,7 @@ async function boot(): Promise<void> {
     });
     mainWindow = w;
     appWindows.add(w);
-    badge.attachWindow(w);
+    badge.attachWindow(w as unknown as BadgeWindowLike, { main: true });
     w.on('close', (e) => {
       if (mainCloseAction(settings.get(), isQuitting, tray.available) === 'hide') {
         e.preventDefault();

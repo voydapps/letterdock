@@ -1,30 +1,33 @@
-// Unread badge on the taskbar and tray icons (DESIGN-SPEC 3.15): text, bitmaps, controller, tray dot,
-// the .ico reader and the two settings.
+// Unread badge in the window icon (DESIGN-SPEC 3.15, addendum 2026-10-12): text and title, the icon composite
+// geometry, the controller (all windows, restore, cache, no overlay), the debug hook, the tray dot frames and
+// the two settings.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  APP_TITLE,
   BADGE_DEBOUNCE_MS,
-  BADGE_SIZES,
   UnreadBadge,
-  badgeDescription,
   badgeText,
-  buildBadgeImage,
-  drawBadgeBitmap,
+  debugUnreadOverride,
   trayDotWanted,
+  windowTitle,
   type BadgeDeps,
   type BadgeWindowLike,
-  type ImageFactory,
 } from '../../src/main/unreadBadge';
 import {
-  BADGE_STRIP_SIZES,
-  OVERLAY_MAX_PX,
-  badgePx,
-  badgeStripsDir,
-  overlaySize,
-  pickBadgeSize,
-  stripCropRect,
-} from '../../src/main/badgeStrips';
+  BADGE_RATIO,
+  ICON_BASE_PX,
+  badgeBox,
+  badgeDiameter,
+  compositeBadge,
+  largestFrame,
+  premulFrame,
+  resizePremul,
+  ringWidth,
+  type PremulImage,
+} from '../../src/main/iconBadge';
+import { BADGE_STRIP_SIZES, ICON_BADGE_PX, badgeStripsDir, stripCropRect } from '../../src/main/badgeStrips';
 import { dotDiameter, parseIco, premultiply, trayFrames, withDot } from '../../src/main/trayIcon';
 import { DEFAULT_SETTINGS, mergeSettings } from '../../src/main/settings';
 import { schemas } from '../../src/main/ipcSchemas';
@@ -34,20 +37,50 @@ const px = (buf: Buffer, size: number, x: number, y: number) => {
   return { b: buf[o], g: buf[o + 1], r: buf[o + 2], a: buf[o + 3] };
 };
 
-describe('badge text and description', () => {
+const PLAIN = { plain: true } as never;
+function fakeWindow() {
+  const handlers: Record<string, ((e?: { preventDefault(): void }) => void)[]> = {};
+  let destroyed = false;
+  const setIcon = vi.fn();
+  const setTitle = vi.fn();
+  const setOverlayIcon = vi.fn();
+  const win: BadgeWindowLike = {
+    isDestroyed: () => destroyed,
+    setIcon,
+    setTitle,
+    setOverlayIcon,
+    on: ((ev: string, fn: () => void) => ((handlers[ev] ??= []).push(fn), undefined)) as never,
+  };
+  return {
+    win,
+    setIcon,
+    setTitle,
+    setOverlayIcon,
+    destroy: () => (destroyed = true),
+    emit: (ev: string, e?: { preventDefault(): void }) => (handlers[ev] ?? []).forEach((f) => f(e)),
+  };
+}
+
+describe('badge text and window title', () => {
   it('maps counts to the text of the badge', () => {
-    expect([0, 1, 9, 10, 99, 100, 5000].map(badgeText)).toEqual(['', '1', '9', '10', '99', '99', '99']);
+    expect(badgeText(0)).toBe('');
+    expect(badgeText(1)).toBe('1');
+    expect(badgeText(26)).toBe('26');
+    expect(badgeText(99)).toBe('99');
+    expect(badgeText(100)).toBe('99');
+    expect(badgeText(5000)).toBe('99');
     expect(badgeText(-3)).toBe('');
     expect(badgeText(Number.NaN)).toBe('');
     expect(badgeText(7.9)).toBe('7');
   });
 
-  it('describes the count for screen readers', () => {
-    expect(badgeDescription(0)).toBe('');
-    expect(badgeDescription(1)).toBe('1 unread message');
-    expect(badgeDescription(3)).toBe('3 unread messages');
-    expect(badgeDescription(99)).toBe('99 unread messages');
-    expect(badgeDescription(100)).toBe('More than 99 unread messages');
+  it('puts the count in the window title only with unread mail and the setting on', () => {
+    expect(windowTitle(26, true)).toBe('Letterdock (26)');
+    expect(windowTitle(1, true)).toBe('Letterdock (1)');
+    expect(windowTitle(150, true)).toBe('Letterdock (150)');
+    expect(windowTitle(0, true)).toBe(APP_TITLE);
+    expect(windowTitle(26, false)).toBe('Letterdock');
+    expect(windowTitle(Number.NaN, true)).toBe('Letterdock');
   });
 
   it('shows the tray dot only with unread mail and the setting on', () => {
@@ -57,214 +90,374 @@ describe('badge text and description', () => {
   });
 });
 
-describe('badge bitmaps', () => {
-  it('draws a premultiplied BGRA circle at each of the four sizes', () => {
-    for (const { size } of BADGE_SIZES) {
-      for (const text of ['1', '9', '42', '99']) {
-        const b = drawBadgeBitmap(size, text);
-        expect(b.length).toBe(size * size * 4);
-        // corners are transparent, the middle of the left edge area is red
-        for (const [x, y] of [[0, 0], [size - 1, 0], [0, size - 1], [size - 1, size - 1]]) {
-          expect(px(b, size, x, y)).toEqual({ b: 0, g: 0, r: 0, a: 0 });
-        }
-        const edge = px(b, size, 2, size / 2);
-        expect(edge).toEqual({ b: 0x1c, g: 0x2b, r: 0xc4, a: 255 });
-        // some pixels are white (the digits) and none is brighter than its alpha (premultiplied)
-        let white = 0;
-        for (let o = 0; o < b.length; o += 4) {
-          if (b[o] === 255 && b[o + 1] === 255 && b[o + 2] === 255 && b[o + 3] === 255) white++;
-          expect(b[o]).toBeLessThanOrEqual(b[o + 3]);
-        }
-        expect(white).toBeGreaterThan(size / 2);
-      }
-    }
+describe('debug unread hook', () => {
+  it('forces the count in a development run', () => {
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '26' }, false)).toBe(26);
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '0' }, false)).toBe(0);
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '150' }, false)).toBe(150);
   });
 
-  it('keeps the digits inside the circle and centred', () => {
-    for (const { size } of BADGE_SIZES) {
-      for (const text of ['1', '8', '42', '99']) {
-        const b = drawBadgeBitmap(size, text);
-        let minX: number = size, maxX = -1, minY: number = size, maxY = -1;
-        for (let y = 0; y < size; y++) {
-          for (let x = 0; x < size; x++) {
-            const p = px(b, size, x, y);
-            if (p.a === 255 && p.g > 0x80) {
-              minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-              minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-            }
-          }
-        }
-        // left and right margins differ by at most 1 px, top and bottom too
-        expect(Math.abs(minX - (size - 1 - maxX))).toBeLessThanOrEqual(1);
-        expect(Math.abs(minY - (size - 1 - maxY))).toBeLessThanOrEqual(1);
-      }
-    }
+  it('is ignored when the app is packaged', () => {
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '26' }, true)).toBeNull();
   });
 
-  it('refuses text that does not fit', () => {
-    expect(() => drawBadgeBitmap(16, '')).toThrow();
-    expect(() => drawBadgeBitmap(16, '100')).toThrow();
+  it('is ignored when missing or not a whole number', () => {
+    expect(debugUnreadOverride({}, false)).toBeNull();
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '' }, false)).toBeNull();
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: 'abc' }, false)).toBeNull();
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '-4' }, false)).toBeNull();
+    expect(debugUnreadOverride({ LETTERDOCK_DEBUG_UNREAD: '2.5' }, false)).toBeNull();
   });
 
-  it('the vector fallback is one 16 px bitmap at scale factor 1', () => {
-    const calls: { buffer: Buffer; opts: { width: number; height: number; scaleFactor: number } }[] = [];
-    const factory: ImageFactory = {
-      fromBitmap: (buffer, opts) => {
-        calls.push({ buffer, opts });
-        return {} as never;
-      },
-    };
-    buildBadgeImage(factory, '42');
-    expect(calls).toHaveLength(1);
-    expect(calls[0].opts).toEqual({ width: 16, height: 16, scaleFactor: 1 });
-    expect(calls[0].buffer.length).toBe(16 * 16 * 4);
+  it('forces the controller count whatever the engine says', () => {
+    vi.useFakeTimers();
+    const w = fakeWindow();
+    const badge = new UnreadBadge(
+      { makeImage: (t) => ({ text: t }) as never, plainImage: () => PLAIN, setTrayDot: () => undefined, forcedCount: 26 },
+      { badgeTaskbar: true, badgeTray: true },
+    );
+    badge.attachWindow(w.win, { main: true });
+    expect(w.setIcon).toHaveBeenLastCalledWith({ text: '26' });
+    expect(w.setTitle).toHaveBeenLastCalledWith('Letterdock (26)');
+    badge.setCountNow(0);
+    badge.onCounts(3);
+    vi.advanceTimersByTime(BADGE_DEBOUNCE_MS);
+    expect(w.setIcon).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
 
-function fakeWindow() {
-  const handlers: Record<string, () => void> = {};
-  const win = {
-    destroyed: false,
-    isDestroyed: () => win.destroyed,
-    setOverlayIcon: vi.fn(),
-    on: (ev: string, cb: () => void) => {
-      handlers[ev] = cb;
-    },
-  };
-  return { win: win as typeof win & BadgeWindowLike, handlers };
+// A synthetic opaque icon square (any size) and a synthetic badge cell: a red disc with a white centre dot.
+function solidIcon(size: number): PremulImage {
+  const data = Buffer.alloc(size * size * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 200; // b
+    data[i + 1] = 120; // g
+    data[i + 2] = 20; // r
+    data[i + 3] = 255;
+  }
+  return { size, data };
 }
+function discCell(d: number): PremulImage {
+  const data = Buffer.alloc(d * d * 4);
+  const c = d / 2;
+  for (let y = 0; y < d; y++) {
+    for (let x = 0; x < d; x++) {
+      const r = Math.hypot(x + 0.5 - c, y + 0.5 - c);
+      if (r <= c - 0.5) {
+        const o = (y * d + x) * 4;
+        const white = r < c / 3;
+        data[o] = white ? 255 : 0x1c;
+        data[o + 1] = white ? 255 : 0x2b;
+        data[o + 2] = white ? 255 : 0xc4;
+        data[o + 3] = 255;
+      }
+    }
+  }
+  return { size: d, data };
+}
+const isRed = (p: { b: number; g: number; r: number; a: number }) => p.a === 255 && p.r === 0xc4 && p.g === 0x2b && p.b === 0x1c;
+
+describe('icon composite geometry', () => {
+  it('uses a 56% badge, a ring of max(1, size/32) and a 96 px base', () => {
+    expect(BADGE_RATIO).toBe(0.56);
+    expect(ICON_BASE_PX).toBe(96);
+    expect([16, 24, 32, 48, 64, 96].map(badgeDiameter)).toEqual([9, 13, 18, 27, 36, 54]);
+    expect([16, 24, 32, 48, 64, 96].map(ringWidth)).toEqual([1, 1, 1, 1.5, 2, 3]);
+  });
+
+  it('puts the badge flush to the bottom-right, fully inside the square, at every icon size', () => {
+    for (const size of [16, 24, 32, 48, 64, 96]) {
+      const d = badgeDiameter(size);
+      const out = compositeBadge(solidIcon(size), discCell(d));
+      expect(out.size).toBe(size);
+      expect(out.data.length).toBe(size * size * 4);
+      let minX = size, maxX = -1, minY = size, maxY = -1;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (isRed(px(out.data, size, x, y))) {
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+          }
+        }
+      }
+      // the red disc spans the badge box: it touches the right and bottom edge and is about d px wide (2 px slack for the soft edge)
+      expect(maxX).toBeGreaterThanOrEqual(size - 2); // anti-aliased edge: the last column can be a bit transparent
+      expect(maxY).toBeGreaterThanOrEqual(size - 2);
+      expect(Math.abs(maxX - minX + 1 - d)).toBeLessThanOrEqual(2);
+      expect(Math.abs(maxY - minY + 1 - d)).toBeLessThanOrEqual(2);
+      expect(minX).toBeGreaterThanOrEqual(size - d);
+      expect(minY).toBeGreaterThanOrEqual(size - d);
+    }
+  });
+
+  it('clears a ring around the badge and leaves the rest of the icon untouched', () => {
+    const size = ICON_BASE_PX;
+    const icon = solidIcon(size);
+    const box = badgeBox(size);
+    const out = compositeBadge(icon, discCell(box.d));
+    const rw = ringWidth(size);
+    // along the diagonal up-left of the badge: inside the ring band the icon is cleared, outside it is as before
+    const at = (dist: number) => {
+      const x = Math.floor(box.cx - Math.SQRT1_2 * dist);
+      return { x, p: px(out.data, size, x, x) };
+    };
+    expect(at(box.d / 2 + rw / 2).p).toEqual({ b: 0, g: 0, r: 0, a: 0 });
+    expect(at(box.d / 2 + 1).p).toEqual({ b: 0, g: 0, r: 0, a: 0 });
+    const outside = at(box.d / 2 + rw + 3);
+    expect(outside.p).toEqual(px(icon.data, size, outside.x, outside.x));
+    // far from the badge nothing changed
+    for (const [x, y] of [[0, 0], [10, 10], [size - 1, 5], [5, size - 1], [20, 60]]) {
+      expect(px(out.data, size, x, y)).toEqual(px(icon.data, size, x, y));
+    }
+    // the white centre of the cell is at the middle of the badge
+    expect(px(out.data, size, Math.floor(box.cx), Math.floor(box.cy))).toEqual({ b: 255, g: 255, r: 255, a: 255 });
+  });
+
+  it('keeps premultiplied pixels valid (no channel above alpha)', () => {
+    const out = compositeBadge(solidIcon(96), discCell(54));
+    for (let o = 0; o < out.data.length; o += 4) {
+      expect(out.data[o]).toBeLessThanOrEqual(out.data[o + 3]);
+      expect(out.data[o + 1]).toBeLessThanOrEqual(out.data[o + 3]);
+      expect(out.data[o + 2]).toBeLessThanOrEqual(out.data[o + 3]);
+    }
+  });
+
+  it('refuses a cell of the wrong size', () => {
+    expect(() => compositeBadge(solidIcon(96), discCell(48))).toThrow(/54 px needed/);
+  });
+
+  it('builds the real 96 px icon from the .ico (256 px frame) and keeps its shape', () => {
+    const frame = largestFrame(parseIco(readFileSync(join(__dirname, '../../build/icon.ico'))))!;
+    expect(frame.width).toBe(256);
+    const base = resizePremul(premulFrame(frame), ICON_BASE_PX);
+    expect(base.size).toBe(96);
+    expect(px(base.data, 96, 0, 0).a).toBe(0); // the rounded corner stays transparent
+    expect(px(base.data, 96, 48, 48).a).toBe(255);
+    const out = compositeBadge(base, discCell(ICON_BADGE_PX));
+    expect(px(out.data, 96, 80, 80).a).toBe(255); // inside the badge
+  });
+
+  it('resize keeps a flat colour flat', () => {
+    const small = resizePremul(solidIcon(64), 24);
+    for (let o = 0; o < small.data.length; o += 4) {
+      expect([small.data[o], small.data[o + 1], small.data[o + 2], small.data[o + 3]]).toEqual([200, 120, 20, 255]);
+    }
+  });
+});
 
 describe('badge controller', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  function setup(settings = { badgeTaskbar: true, badgeTray: true }) {
-    const w = fakeWindow();
+  function setup(settings = { badgeTaskbar: true, badgeTray: true }, extra: Partial<BadgeDeps> = {}) {
     const dots: boolean[] = [];
     const makeImage = vi.fn((t: string) => ({ text: t }) as never);
-    let current: BadgeWindowLike | null = w.win;
     const badge = new UnreadBadge(
-      { getWindow: () => current, setTrayDot: (on) => dots.push(on), makeImage },
+      { makeImage, plainImage: () => PLAIN, setTrayDot: (on) => dots.push(on), ...extra },
       settings,
     );
-    badge.attachWindow(w.win);
-    return { ...w, badge, dots, makeImage, setWindow: (x: BadgeWindowLike | null) => (current = x) };
+    const main = fakeWindow();
+    badge.attachWindow(main.win, { main: true });
+    return { badge, dots, makeImage, main };
   }
 
-  it('sets the overlay for the first count and clears it at zero', () => {
-    const { badge, win, dots } = setup();
-    badge.setCountNow(3);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '3' }, '3 unread messages');
-    expect(dots).toEqual([true]);
+  it('sets the badged icon and the title for the first count and restores the plain icon at zero', () => {
+    const { badge, main } = setup();
+    expect(main.setIcon).not.toHaveBeenCalled(); // nothing unread: the window keeps its plain icon
+    badge.setCountNow(26);
+    expect(main.setIcon).toHaveBeenLastCalledWith({ text: '26' });
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock (26)');
     badge.setCountNow(0);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith(null, '');
-    expect(dots).toEqual([true, false]);
+    expect(main.setIcon).toHaveBeenLastCalledWith(PLAIN); // never null
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock');
   });
 
-  it('does not touch the window when nothing is unread at start', () => {
-    const { badge, win, dots } = setup();
+  it('never uses the native overlay, except one clear per window', () => {
+    const { badge, main } = setup();
+    const other = fakeWindow();
+    badge.attachWindow(other.win);
+    badge.setCountNow(5);
     badge.setCountNow(0);
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
-    expect(dots).toEqual([]);
+    expect(main.setOverlayIcon).toHaveBeenCalledTimes(1);
+    expect(main.setOverlayIcon).toHaveBeenCalledWith(null, '');
+    expect(other.setOverlayIcon).toHaveBeenCalledTimes(1);
+    expect(other.setOverlayIcon).toHaveBeenCalledWith(null, '');
+    badge.attachWindow(main.win, { main: true }); // attaching again does not clear again
+    expect(main.setOverlayIcon).toHaveBeenCalledTimes(1);
   });
 
-  it('does not repeat a call when the badge did not change', () => {
-    const { badge, win } = setup();
+  it('puts the badge on every window, and only the main window gets the title', () => {
+    const { badge, main } = setup();
+    const compose = fakeWindow();
+    const viewer = fakeWindow();
+    badge.attachWindow(compose.win);
+    badge.attachWindow(viewer.win);
+    badge.setCountNow(9);
+    for (const w of [main, compose, viewer]) expect(w.setIcon).toHaveBeenLastCalledWith({ text: '9' });
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock (9)');
+    expect(compose.setTitle).not.toHaveBeenCalled();
+    expect(viewer.setTitle).not.toHaveBeenCalled();
+    badge.setCountNow(0);
+    for (const w of [main, compose, viewer]) expect(w.setIcon).toHaveBeenLastCalledWith(PLAIN);
+  });
+
+  it('gives a window created later the badge at once', () => {
+    const { badge } = setup();
+    badge.setCountNow(12);
+    const late = fakeWindow();
+    badge.attachWindow(late.win);
+    expect(late.setIcon).toHaveBeenCalledTimes(1);
+    expect(late.setIcon).toHaveBeenCalledWith({ text: '12' });
+  });
+
+  it('does not touch a late window at zero (it was created with the plain icon)', () => {
+    const { badge } = setup();
+    const late = fakeWindow();
+    badge.attachWindow(late.win);
+    expect(late.setIcon).not.toHaveBeenCalled();
+    expect(late.setTitle).not.toHaveBeenCalled();
+  });
+
+  it('upgrades a window to main when it is attached again as the main window', () => {
+    const { badge } = setup();
+    badge.setCountNow(4);
+    const w = fakeWindow();
+    badge.attachWindow(w.win); // browser-window-created
+    expect(w.setTitle).not.toHaveBeenCalled();
+    badge.attachWindow(w.win, { main: true }); // ensureMainWindow
+    expect(w.setTitle).toHaveBeenLastCalledWith('Letterdock (4)');
+    expect(w.setIcon).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not repeat a call when nothing changed', () => {
+    const { badge, main } = setup();
     badge.setCountNow(5);
     badge.setCountNow(5);
-    badge.onCounts(5);
-    vi.advanceTimersByTime(BADGE_DEBOUNCE_MS);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
-    badge.setCountNow(150);
-    badge.setCountNow(300); // still "99" and "More than 99": same badge
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(2);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '99' }, 'More than 99 unread messages');
+    badge.setCountNow(5);
+    expect(main.setIcon).toHaveBeenCalledTimes(1);
+    expect(main.setTitle).toHaveBeenCalledTimes(1);
+    badge.setCountNow(120); // 99 on the icon, the exact count in the title
+    badge.setCountNow(130);
+    expect(main.setIcon).toHaveBeenCalledTimes(2);
+    expect(main.setTitle).toHaveBeenCalledTimes(3);
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock (130)');
   });
 
   it('turns a burst of counts into one update after 250 ms', () => {
-    const { badge, win } = setup();
-    for (const n of [1, 2, 3, 4, 5]) badge.onCounts(n);
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
+    const { badge, main } = setup();
+    badge.onCounts(1);
+    badge.onCounts(2);
+    badge.onCounts(3);
+    expect(main.setIcon).not.toHaveBeenCalled();
     vi.advanceTimersByTime(BADGE_DEBOUNCE_MS - 1);
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
+    expect(main.setIcon).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
-    expect(win.setOverlayIcon).toHaveBeenCalledWith({ text: '5' }, '5 unread messages');
+    expect(main.setIcon).toHaveBeenCalledTimes(1);
+    expect(main.setIcon).toHaveBeenCalledWith({ text: '3' });
   });
 
-  it('builds each image once and caches it', () => {
+  it('builds each image once and caches it by text and size', () => {
     const { badge, makeImage } = setup();
-    badge.setCountNow(4);
+    const a = fakeWindow();
+    badge.attachWindow(a.win);
+    badge.setCountNow(7);
     badge.setCountNow(0);
-    badge.setCountNow(4);
-    expect(makeImage).toHaveBeenCalledTimes(1);
-  });
-
-  it('clears the overlay when the taskbar setting goes off and restores it when it goes on', () => {
-    const { badge, win, dots } = setup();
+    badge.setCountNow(7);
     badge.setCountNow(8);
+    badge.setCountNow(120);
+    badge.setCountNow(99);
+    expect(makeImage.mock.calls.map((c) => c[0])).toEqual(['7', '8', '99']);
+    expect(a.setIcon).toHaveBeenCalledWith(expect.objectContaining({ text: '7' }));
+  });
+
+  it('restores the plain icon when the taskbar setting goes off and the badge when it goes on', () => {
+    const { badge, main } = setup();
+    badge.setCountNow(5);
     badge.settingsChanged({ badgeTaskbar: false, badgeTray: true });
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith(null, '');
-    expect(dots).toEqual([true]); // the tray dot is a separate setting
+    expect(main.setIcon).toHaveBeenLastCalledWith(PLAIN);
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock');
     badge.settingsChanged({ badgeTaskbar: true, badgeTray: true });
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '8' }, '8 unread messages');
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(3);
+    expect(main.setIcon).toHaveBeenLastCalledWith({ text: '5' });
+    expect(main.setTitle).toHaveBeenLastCalledWith('Letterdock (5)');
   });
 
-  it('switches the tray dot with its own setting', () => {
-    const { badge, dots, win } = setup();
-    badge.setCountNow(2);
-    badge.settingsChanged({ badgeTaskbar: true, badgeTray: false });
-    badge.settingsChanged({ badgeTaskbar: true, badgeTray: true });
-    expect(dots).toEqual([true, false, true]);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
-  });
-
-  it('starts with both settings off and shows nothing', () => {
-    const { badge, win, dots } = setup({ badgeTaskbar: false, badgeTray: false });
-    badge.setCountNow(12);
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
+  it('starts with the taskbar setting off and shows nothing', () => {
+    const { badge, main, dots } = setup({ badgeTaskbar: false, badgeTray: false });
+    badge.setCountNow(9);
+    expect(main.setIcon).not.toHaveBeenCalled();
+    expect(main.setTitle).not.toHaveBeenCalled();
     expect(dots).toEqual([]);
   });
 
-  it('sets the overlay again when the window is shown, restored or focused', () => {
-    const { badge, win, handlers } = setup();
-    badge.setCountNow(6);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
-    handlers.show();
-    handlers.restore();
-    handlers.focus();
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(4);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '6' }, '6 unread messages');
-  });
-
-  it('does not set anything on show when nothing is unread', () => {
-    const { badge, win, handlers } = setup();
+  it('switches the tray dot with its own setting', () => {
+    const { badge, dots } = setup();
+    badge.setCountNow(3);
+    expect(dots).toEqual([true]);
+    badge.settingsChanged({ badgeTaskbar: true, badgeTray: false });
+    expect(dots).toEqual([true, false]);
+    badge.settingsChanged({ badgeTaskbar: true, badgeTray: true });
+    expect(dots).toEqual([true, false, true]);
     badge.setCountNow(0);
-    handlers.show();
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
+    expect(dots).toEqual([true, false, true, false]);
   });
 
-  it('applies the badge to a window that is created later, and survives a destroyed one', () => {
-    const { badge, win, setWindow } = setup();
-    badge.setCountNow(2);
-    const next = fakeWindow();
-    setWindow(next.win);
-    badge.attachWindow(next.win);
-    expect(next.win.setOverlayIcon).toHaveBeenCalledWith({ text: '2' }, '2 unread messages');
-    next.win.destroyed = true;
+  it('keeps the main title when the page sets its own title', () => {
+    const { main } = setup();
+    const e = { preventDefault: vi.fn() };
+    main.emit('page-title-updated', e);
+    expect(e.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the title of compose and viewer windows alone', () => {
+    const { badge } = setup();
+    const compose = fakeWindow();
+    badge.attachWindow(compose.win);
+    const e = { preventDefault: vi.fn() };
+    compose.emit('page-title-updated', e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('survives destroyed and closed windows', () => {
+    const { badge, main } = setup();
+    const gone = fakeWindow();
+    badge.attachWindow(gone.win);
+    gone.destroy();
     expect(() => badge.setCountNow(3)).not.toThrow();
-    setWindow(null);
-    expect(() => badge.setCountNow(4)).not.toThrow();
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(1);
+    expect(gone.setIcon).not.toHaveBeenCalled();
+    expect(main.setIcon).toHaveBeenCalledTimes(1);
+    const closed = fakeWindow();
+    badge.attachWindow(closed.win);
+    closed.emit('closed');
+    badge.setCountNow(4);
+    expect(closed.setIcon).toHaveBeenCalledTimes(1); // only the one from attach
   });
 
   it('ignores nonsense counts', () => {
-    const { badge, win } = setup();
+    const { badge, main } = setup();
     badge.setCountNow(Number.NaN);
     badge.setCountNow(-4);
-    expect(win.setOverlayIcon).not.toHaveBeenCalled();
+    expect(main.setIcon).not.toHaveBeenCalled();
+    badge.setCountNow(2.9);
+    expect(main.setIcon).toHaveBeenLastCalledWith({ text: '2' });
+  });
+
+  it('keeps the plain icon, and says so once, when the badged icon cannot be made', () => {
+    const onError = vi.fn();
+    const makeImage = vi.fn(() => {
+      throw new Error('strip missing');
+    });
+    const badge = new UnreadBadge(
+      { makeImage, plainImage: () => PLAIN, setTrayDot: () => undefined, onError },
+      { badgeTaskbar: true, badgeTray: true },
+    );
+    const w = fakeWindow();
+    badge.attachWindow(w.win, { main: true });
+    badge.setCountNow(3);
+    badge.setCountNow(4);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(w.setIcon).toHaveBeenCalledWith(PLAIN); // never null
+    expect(w.setTitle).toHaveBeenLastCalledWith('Letterdock (4)'); // the count still reaches the title
   });
 });
 
@@ -342,27 +535,17 @@ describe('settings', () => {
 
 
 describe('badge strips', () => {
-  it('picks the smallest strip size that is at least the needed pixels', () => {
-    const table: [number, number][] = [[1, 16], [1.1, 20], [1.25, 20], [1.5, 24], [2, 32], [3, 48], [3.5, 48]];
-    for (const [sf, size] of table) expect(pickBadgeSize(badgePx(sf))).toBe(size);
-    expect(badgePx(1.1)).toBe(18);
-    expect(badgePx(Number.NaN)).toBe(16);
-    expect(BADGE_STRIP_SIZES).toEqual([16, 20, 24, 28, 32, 40, 48]);
-  });
-
-  it('is limited to what Electron passes to Windows (16 px) unless the cap is lifted', () => {
-    expect(OVERLAY_MAX_PX).toBe(16);
-    expect(overlaySize(1.5)).toBe(16);
-    expect(overlaySize(1.5, Infinity)).toBe(24);
-    expect(overlaySize(3.5, Infinity)).toBe(48);
+  it('has the one strip size the 96 px icon needs, equal to the badge diameter', () => {
+    expect([...BADGE_STRIP_SIZES]).toEqual([54]);
+    expect(ICON_BADGE_PX).toBe(badgeDiameter(ICON_BASE_PX));
+    expect(ICON_BADGE_PX).toBe(54);
   });
 
   it('crops number n from cell n-1', () => {
-    expect(stripCropRect(24, '1')).toEqual({ x: 0, y: 0, width: 24, height: 24 });
-    expect(stripCropRect(24, '26')).toEqual({ x: 600, y: 0, width: 24, height: 24 });
-    expect(stripCropRect(16, '99')).toEqual({ x: 1568, y: 0, width: 16, height: 16 });
-    expect(() => stripCropRect(16, '100')).toThrow();
-    expect(() => stripCropRect(16, '')).toThrow();
+    expect(stripCropRect(54, '1')).toEqual({ x: 0, y: 0, width: 54, height: 54 });
+    expect(stripCropRect(54, '99')).toEqual({ x: 98 * 54, y: 0, width: 54, height: 54 });
+    expect(() => stripCropRect(54, '0')).toThrow();
+    expect(() => stripCropRect(54, '100')).toThrow();
   });
 
   it('finds the strips in resources when packaged and in build/ in development', () => {
@@ -376,91 +559,5 @@ describe('badge strips', () => {
       expect(png.readUInt32BE(16)).toBe(size * 99);
       expect(png.readUInt32BE(20)).toBe(size);
     }
-  });
-});
-
-describe('badge size follows the display', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  function setup(extra: Partial<BadgeDeps> = {}) {
-    const w = fakeWindow();
-    let sf = 1;
-    const makeImage = vi.fn((t: string, px: number) => ({ text: t, px }) as never);
-    const badge = new UnreadBadge(
-      { getWindow: () => w.win, setTrayDot: () => undefined, makeImage, getScaleFactor: () => sf, maxPx: Infinity, ...extra },
-      { badgeTaskbar: true, badgeTray: true },
-    );
-    badge.attachWindow(w.win);
-    return { ...w, badge, makeImage, setSf: (x: number) => (sf = x) };
-  }
-
-  it('builds at the pixel size and caches by text and size', () => {
-    const { badge, makeImage, setSf, win } = setup();
-    badge.setCountNow(26);
-    expect(makeImage).toHaveBeenLastCalledWith('26', 16);
-    setSf(1.5);
-    badge.displayChanged();
-    expect(makeImage).toHaveBeenLastCalledWith('26', 24);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(2);
-    badge.displayChanged(); // same size: nothing new
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(2);
-    setSf(1);
-    badge.displayChanged(); // back: cached image, applied again
-    expect(makeImage).toHaveBeenCalledTimes(2);
-    expect(win.setOverlayIcon).toHaveBeenCalledTimes(3);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '26', px: 16 }, '26 unread messages');
-  });
-
-  it('applies again when the window moves to another display', () => {
-    const { badge, setSf, win, handlers } = setup();
-    badge.setCountNow(3);
-    setSf(2);
-    handlers.moved();
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '3', px: 32 }, '3 unread messages');
-  });
-
-  it('shows 99 for 100 and more, at the same size', () => {
-    const { badge, makeImage } = setup();
-    badge.setCountNow(250);
-    expect(makeImage).toHaveBeenCalledWith('99', 16);
-  });
-
-  it('uses 1x when the scale factor cannot be read', () => {
-    const { badge, makeImage } = setup({
-      getScaleFactor: () => {
-        throw new Error('no display');
-      },
-    });
-    badge.setCountNow(5);
-    expect(makeImage).toHaveBeenCalledWith('5', 16);
-  });
-
-  it('keeps the default 16 px cap on this Electron', () => {
-    const { badge, makeImage } = setup({ maxPx: undefined });
-    badge.setCountNow(5);
-    badge.setCountNow(0);
-    // scale 1.5 would be 24, the cap makes it 16
-    const w2 = setup({ maxPx: undefined, getScaleFactor: () => 1.5 });
-    w2.badge.setCountNow(5);
-    expect(w2.makeImage).toHaveBeenCalledWith('5', 16);
-    expect(makeImage).toHaveBeenCalledWith('5', 16);
-  });
-
-  it('falls back to the vector image when the strips fail, and says so once', () => {
-    const onFallback = vi.fn();
-    const fallbackImage = vi.fn((t: string) => ({ text: t, vector: true }) as never);
-    const { badge, win } = setup({
-      makeImage: () => {
-        throw new Error('strip missing');
-      },
-      fallbackImage,
-      onFallback,
-    });
-    badge.setCountNow(7);
-    badge.setCountNow(8);
-    expect(win.setOverlayIcon).toHaveBeenLastCalledWith({ text: '8', vector: true }, '8 unread messages');
-    expect(fallbackImage).toHaveBeenCalledTimes(2);
-    expect(onFallback).toHaveBeenCalledTimes(1);
   });
 });

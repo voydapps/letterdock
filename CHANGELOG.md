@@ -2,7 +2,7 @@
 
 ## 0.6.9 - 2026-10-12
 ### Fixed
-- The unread number on the taskbar icon is now drawn with a real font, so it looks sharper.
+- The unread number is now part of the Letterdock icon on the taskbar, drawn with a real font at your screen's size, so it is sharp. It also shows in Alt+Tab.
 
 ## 0.6.8 - 2026-10-11
 ### New

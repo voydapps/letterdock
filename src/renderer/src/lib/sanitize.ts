@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import type * as TrackersModule from '../../../shared/trackers';
 import * as csstree from 'css-tree';
 import { IMAGE_SCHEME, isRemoteUrl, toProxyUrl } from '../../../shared/imageProxy';
-import { classify,detectDarkAware, type ClassifyResult } from './emailTheme';
+import { classify, detectDarkAware, type ClassifyResult } from './emailTheme';
 import { QUOTE_FRAME_CSS } from './quotes';
 
 export interface SanitizedHtml {
@@ -102,7 +102,11 @@ function cleanCss(css: string, blockRemote: boolean, asDeclarations: boolean): s
     const ast = csstree.parse(css, { context: asDeclarations ? 'declarationList' : 'stylesheet' });
     let remote = false;
     csstree.walk(ast, {
-      enter(node: csstree.CssNode, item: csstree.ListItem<csstree.CssNode>, list: csstree.List<csstree.CssNode>) {
+      enter(
+        node: csstree.CssNode,
+        item: csstree.ListItem<csstree.CssNode>,
+        list: csstree.List<csstree.CssNode>,
+      ) {
         if (node.type === 'Atrule' && node.name.toLowerCase() === 'import') {
           remote = true;
           list.remove(item);
@@ -183,7 +187,8 @@ export function softBreakCells(root: ParentNode): void {
     const t = n as Text;
     if (t.data.length < LONG_RUN || !/\S{30,}/.test(t.data)) continue;
     const parent = t.parentElement;
-    if (!parent || parent.closest('style,script,pre,textarea') || !parent.closest('td,th')) continue;
+    if (!parent || parent.closest('style,script,pre,textarea') || !parent.closest('td,th'))
+      continue;
     hits.push(t);
   }
   for (const t of hits) {
@@ -255,17 +260,24 @@ function detectRemote(root: HTMLElement): boolean {
     const imgs = [...root.querySelectorAll('img')];
     if (
       imgs.some((i) => isRemoteUrl(i.getAttribute('src') ?? '') || i.hasAttribute('srcset')) ||
-      [...root.querySelectorAll('[background]')].some((e) => isRemoteUrl(e.getAttribute('background') ?? ''))
+      [...root.querySelectorAll('[background]')].some((e) =>
+        isRemoteUrl(e.getAttribute('background') ?? ''),
+      )
     )
       return true;
   }
-  for (const st of root.querySelectorAll('style')) if (cssHasRemote(st.textContent ?? '')) return true;
+  for (const st of root.querySelectorAll('style'))
+    if (cssHasRemote(st.textContent ?? '')) return true;
   for (const el of root.querySelectorAll('[style]'))
     if (cssHasRemote(el.getAttribute('style') ?? '')) return true;
   return false;
 }
 
-export function sanitizeEmailHtml(raw: string, cid: Record<string, string> = {}, trackers: TrackerApi | null = null): SanitizedHtml {
+export function sanitizeEmailHtml(
+  raw: string,
+  cid: Record<string, string> = {},
+  trackers: TrackerApi | null = null,
+): SanitizedHtml {
   const body = purify.sanitize(raw, {
     FORBID_TAGS,
     FORBID_ATTR: ['formaction', 'ping', 'srcdoc'],
@@ -284,7 +296,14 @@ export function sanitizeEmailHtml(raw: string, cid: Record<string, string> = {},
   const b = body.cloneNode(true) as HTMLElement;
   processTree(a, false, cid);
   processTree(b, true, cid);
-  return { blocked: b.innerHTML, allowed: a.innerHTML, hasRemote, classification, darkAware, trackers: found };
+  return {
+    blocked: b.innerHTML,
+    allowed: a.innerHTML,
+    hasRemote,
+    classification,
+    darkAware,
+    trackers: found,
+  };
 }
 
 // The frame height must follow the content, never the pane: height:auto!important beats sender rules.

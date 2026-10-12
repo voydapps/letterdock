@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { Icon, type IconName } from '../../components/Icon';
 import { escapeHtml } from '../../lib/format';
 import { ownClassSelector } from '../../lib/quotes';
+import { softBreakCells } from '../../lib/sanitize';
 
 // Only plain formatting survives a paste or a draft reload (no scripts, no foreign styles).
 const purify = DOMPurify(window);
@@ -18,11 +19,15 @@ function cleanPaste(html: string): string {
 
 /** Draft content from the engine or an earlier save: keep classes and quote styles, drop anything unsafe. */
 function cleanDraft(html: string): string {
-  return purify.sanitize(html, {
-    ALLOWED_TAGS: PASTE_TAGS.concat(['hr', 'table', 'tbody', 'thead', 'tr', 'td', 'th', 'font', 'sub', 'sup']),
+  const body = purify.sanitize(html, {
+    // wbr: soft break points that softBreakCells adds to long text in quoted table cells (keeps tables from widening the editor).
+    ALLOWED_TAGS: PASTE_TAGS.concat(['hr', 'table', 'tbody', 'thead', 'tr', 'td', 'th', 'font', 'sub', 'sup', 'wbr']),
     ALLOWED_ATTR: ['href', 'class', 'style', 'type', 'dir', 'target', 'rel'],
     ALLOW_DATA_ATTR: false,
-  });
+    RETURN_DOM: true,
+  }) as HTMLElement;
+  softBreakCells(body);
+  return body.innerHTML;
 }
 
 export interface RichEditorHandle {

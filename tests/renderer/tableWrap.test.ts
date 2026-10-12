@@ -79,7 +79,10 @@ describe('layout in a narrow frame (real Chromium; skipped when it is not instal
 
   it('negative control: the old CSS squeezes the header (proves the test sees the bug)', async (ctx) => {
     if (!browser) return ctx.skip();
-    const old = frame(STATUS_TABLE).replace('overflow-wrap:break-word', 'word-wrap:break-word;overflow-wrap:anywhere');
+    const old = frame(STATUS_TABLE).replace(
+      'overflow-wrap:break-word',
+      'word-wrap:break-word;overflow-wrap:anywhere',
+    );
     const r = await measure(old);
     expect(r.th).toBeGreaterThan(ONE_LINE * 1.5);
   });
@@ -87,7 +90,10 @@ describe('layout in a narrow frame (real Chromium; skipped when it is not instal
   const cases: [string, string][] = [
     ['a 300-char URL in a paragraph', `<p>${URL300}</p>`],
     ['a long URL in a table cell', CELL_URL],
-    ['a wide 600px newsletter table', '<table width="600" style="width:600px"><tr><td>Hello</td><td>world</td></tr></table>'],
+    [
+      'a wide 600px newsletter table',
+      '<table width="600" style="width:600px"><tr><td>Hello</td><td>world</td></tr></table>',
+    ],
     ['a long line in a pre block', `<pre>${'x'.repeat(400)}</pre>`],
   ];
   for (const [name, html] of cases) {
@@ -97,4 +103,12 @@ describe('layout in a narrow frame (real Chromium; skipped when it is not instal
       expect(r.sw).toBe(r.cw);
     });
   }
+});
+
+describe('compose editor quotes', () => {
+  it('cleanDraft-style sanitizing keeps the soft break points (wbr is allowed)', async () => {
+    const { default: DOMPurify } = await import('dompurify');
+    const out = DOMPurify(window).sanitize('<table><tr><td>a<wbr>b</td></tr></table>', { ALLOWED_TAGS: ['table', 'tr', 'td', 'tbody', 'wbr'] });
+    expect(out).toContain('<wbr>');
+  });
 });

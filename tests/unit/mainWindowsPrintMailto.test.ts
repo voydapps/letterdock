@@ -76,6 +76,9 @@ describe('print scale for wide emails', () => {
     expect(printScale('<table width="600"><tr><td>x</td></tr></table>')).toBe(1);
     expect(printScale('<table width="100%" style="width:100%"></table>')).toBe(1);
     expect(printScale('<p>Hello</p>')).toBe(1);
+    expect(printScale('<div style="max-width:1000px"><p>x</p></div>')).toBe(1);
+    expect(printScale('<div style="min-width:900px"></div>')).toBe(1);
+    expect(printScale('<img src="x" width="1200">')).toBe(1);
   });
   it('writes the zoom into the printed body only when needed', () => {
     const base = { subject: 's', from: null, to: [], cc: [], date: 0, text: '' };

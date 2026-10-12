@@ -96,14 +96,19 @@ export function fmtSize(bytes: number): string {
 /** Width of a printed line on A4 / Letter with 15 mm margins, in CSS pixels (a little under the real one). */
 const PRINT_LINE_PX = 680;
 
+/** Pictures are already capped to the page by max-width:100%, so their width attribute must not scale the text. */
+const stripImages = (html: string): string => html.replace(/<img\b[^>]*>/gi, '');
+
 /**
- * The widest fixed width the body asks for (width="1000", width:1000px). A page cannot scroll sideways, so a
- * wide statement would be cut at the right edge. The print window runs no script and cannot measure, so
- * this reads the numbers from the markup and the document is scaled down to fit (never up). 1 = no scaling.
+ * The widest fixed width the body asks for (width="1000", width:1000px; not max-width or min-width). A page
+ * cannot scroll sideways, so a wide statement would be cut at the right edge. The print window runs no script
+ * and cannot measure, so this reads the numbers from the markup and the document is scaled down to fit
+ * (never up). 1 = no scaling.
  */
 export function printScale(html: string): number {
   let widest = 0;
-  for (const m of html.matchAll(/\bwidth\s*=\s*["']?(\d{3,4})(?![\d%])|\bwidth\s*:\s*(\d{3,4})(?:\.\d+)?px/gi)) {
+  const re = /(?<![\w-])width\s*=\s*["']?(\d{3,4})(?![\d%])|(?<![\w-])width\s*:\s*(\d{3,4})(?:\.\d+)?px/gi;
+  for (const m of stripImages(html).matchAll(re)) {
     widest = Math.max(widest, Number(m[1] ?? m[2]));
   }
   if (widest <= PRINT_LINE_PX || widest > 6000) return 1;

@@ -203,6 +203,20 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       );
       expect(r.box).toBe('hidden');
     });
+    it('leaves a carousel (a wide row with no table) cut, as the sender made it', async (ctx) => {
+      if (!browser) return ctx.skip();
+      const r = await run(
+        '<div id="box" style="width:300px;overflow:hidden"><div style="width:1200px;height:50px">slides</div></div><div id="pre"></div>',
+      );
+      expect(r.box).toBe('hidden');
+    });
+    it('opens a table cell with an ellipsis that cuts its text', async (ctx) => {
+      if (!browser) return ctx.skip();
+      const r = await run(
+        '<table style="table-layout:fixed;width:100px"><tr><td id="box" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Deposit/Withdrawal and more text</td></tr></table><div id="pre"></div>',
+      );
+      expect(r.box).toBe('visible');
+    });
   });
 
   it('the fixture is a statement with fixed 1000 px tables', () => {

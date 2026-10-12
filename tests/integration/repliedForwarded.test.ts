@@ -130,7 +130,11 @@ describe('markReplied', () => {
     c.h.engine.actions.markReplied(src.id, 'forwarded');
     expect(c.row('Lunch?').flag_forwarded).toBe(1);
     expect(c.row('Lunch?').flag_answered).toBe(0);
-    expect(c.h.events.length).toBeGreaterThan(0);
+    await waitFor('list refresh event', () =>
+      c.h.events.some(
+        (e) => e.type === 'messages:changed' && (e.updated as number[] | undefined)?.includes(src.id),
+      ),
+    );
     await c.h.engine.actions.drain();
     await waitFor('server $Forwarded', () => serverFlags(c.imap, src.uid).includes('$Forwarded'));
   });
@@ -232,6 +236,24 @@ describe('sync and $Forwarded', () => {
       await call(c.h, 'sync.folder', { folderId: inbox.id });
       return c.row('Lunch?').flag_answered === 0;
     });
+  });
+});
+
+describe('moves', () => {
+  it('the mark survives an archive and the sync of the destination folder (Gmail drops the keyword)', async () => {
+    const c = await boot();
+    const src = c.msg('Lunch?');
+    c.h.engine.actions.markReplied(src.id, 'forwarded');
+    c.imap.rejectNext(['UID STORE']); // the server never keeps the keyword
+    await call(c.h, 'messages.apply', { messageIds: [src.id], action: { type: 'archive' } });
+    await c.h.engine.actions.drain();
+    const archive = await waitFor('archive folder', () => c.h.engine.ctx.folders.rowByRole(c.acc.id, 'archive'));
+    await call(c.h, 'sync.folder', { folderId: archive.id });
+    await waitFor('message arrived in archive', () =>
+      c.h.folderMessages(archive.id).some((m) => m.subject === 'Lunch?'),
+    );
+    const moved = c.h.folderMessages(archive.id).find((m) => m.subject === 'Lunch?')!;
+    expect(c.h.engine.ctx.messages.headers([moved.id])[0]!.forwarded).toBe(true);
   });
 });
 

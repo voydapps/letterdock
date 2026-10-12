@@ -26,6 +26,29 @@
 .row .muted-ic {
   color: var(--t3);
 }
+/* Replied / forwarded mark (DESIGN-SPEC 3.16): muted, inherits --t3 from .row .ico on every row state. */
+.row .repl-ic {
+  display: inline-flex;
+  gap: 2px;
+}
+.row .repl-ic svg {
+  width: 14px;
+  height: 14px;
+}
+.rrepl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--t3);
+}
+.rrepl svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
 .row .muted-ic svg {
   width: 14px;
   height: 14px;

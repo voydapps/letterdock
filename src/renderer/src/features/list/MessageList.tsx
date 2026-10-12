@@ -35,7 +35,7 @@ import { dateRuns, groupRuns } from '../../lib/listGroups';
 import { inText, rowWhenText, whenText } from '../../lib/schedule';
 import { allMuted, allPinned, canMute, canSnoozeRole, openSnoozeMenu, setMuted, setPinned, snoozeMenuEntries, unsnoozeMessages } from '../../lib/light';
 import { canPinHere } from '../../lib/pinRules';
-import { isValidEmail, listDate, fullDate, senderName } from '../../lib/format';
+import { isValidEmail, listDate, fullDate, repliedLabel, senderName } from '../../lib/format';
 import { Highlight, searchTerms } from '../../lib/search';
 import { reportActionError, toastError } from '../../store/toasts';
 import { folderLabel } from '../sidebar/Sidebar';
@@ -851,7 +851,7 @@ interface RowProps {
   onOpen: (m: ListItem) => void;
 }
 
-const MessageRow = memo(function MessageRow({
+export const MessageRow = memo(function MessageRow({
   msg: m,
   posinset,
   setsize,
@@ -880,6 +880,9 @@ const MessageRow = memo(function MessageRow({
         ? `To: ${senderName(firstTo)}`
         : '(no recipient)'
       : senderName(m.from);
+  // The reply/forward mark is never shown in Sent or Drafts: those flags sit on the original message, not the sent copy.
+  const inOutbound = folder?.role === 'sent' || folder?.role === 'drafts' || m.draft;
+  const replied = inOutbound ? '' : repliedLabel(m.answered, m.forwarded);
   const date = listDate(m.date);
   const label = [
     m.snoozeReturnedAt ? 'Snoozed, back from snooze' : '',
@@ -887,12 +890,13 @@ const MessageRow = memo(function MessageRow({
     m.muted ? 'Muted conversation' : '',
     m.seen ? 'Read' : 'Unread',
     m.flagged ? 'Flagged' : '',
+    replied,
     m.hasAttachments ? 'Has attachment' : '',
   ]
     .filter(Boolean)
     .join(', ');
   const aria = conv
-    ? `${m.snoozeReturnedAt ? 'Snoozed, back from snooze, ' : ''}${m.pinned ? 'Pinned, ' : ''}${m.muted ? 'Muted conversation, ' : ''}${m.seen ? 'Read' : 'Unread'}, ${m.flagged ? 'Flagged, ' : ''}${m.hasAttachments ? 'Has attachment, ' : ''}conversation with ${who}, ${conv.count} messages${conv.unreadCount > 0 ? `, ${conv.unreadCount} unread` : ''}, ${m.subject || '(no subject)'}, ${date}${account ? `, account ${account.displayName}` : ''}. ${conv.latest.fromMe ? 'You: ' : ''}${m.snippet}`
+    ? `${m.snoozeReturnedAt ? 'Snoozed, back from snooze, ' : ''}${m.pinned ? 'Pinned, ' : ''}${m.muted ? 'Muted conversation, ' : ''}${m.seen ? 'Read' : 'Unread'}, ${m.flagged ? 'Flagged, ' : ''}${replied ? `${replied}, ` : ''}${m.hasAttachments ? 'Has attachment, ' : ''}conversation with ${who}, ${conv.count} messages${conv.unreadCount > 0 ? `, ${conv.unreadCount} unread` : ''}, ${m.subject || '(no subject)'}, ${date}${account ? `, account ${account.displayName}` : ''}. ${conv.latest.fromMe ? 'You: ' : ''}${m.snippet}`
     : `${label}, from ${who}, ${m.subject || '(no subject)'}, ${date}${account ? `, account ${account.displayName}` : ''}. ${m.snippet}`;
   const youPrefix = conv?.latest.fromMe ? 'You: ' : '';
   const scopeWord = conv ? `conversation (${conv.count} messages)` : '';
@@ -942,6 +946,12 @@ const MessageRow = memo(function MessageRow({
           {conv ? <ConversationParticipants conv={conv} /> : <Highlight text={who} terms={terms} />}
         </span>
         <span className="ico">
+          {replied ? (
+            <span className="repl-ic" title={replied} role="img" aria-label={replied}>
+              {m.answered ? <Icon name="reply" /> : null}
+              {m.forwarded ? <Icon name="fwd" /> : null}
+            </span>
+          ) : null}
           {m.hasAttachments ? <Icon name="clip" /> : null}
           {m.pinned ? (
             <span className="pinned-ic" title="Pinned" role="img" aria-label="Pinned">

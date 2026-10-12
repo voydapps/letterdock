@@ -36,6 +36,7 @@ import { canMute, canSnoozeRole, openSnoozeMenu, setMuted, setPinned, snoozeMenu
 import { canPinHere } from '../../lib/pinRules';
 import {
   MutedNotice,
+  RepliedNote,
   SnoozedBanner,
   UNSUBSCRIBE_UNAVAILABLE_TIP,
   UnsubscribeButton,
@@ -305,6 +306,7 @@ export function MessageView({
             onToggle={() => setDetails((d) => !d)}
             unsub={windowMode ? null : unsub}
           />
+          {outgoing ? null : <RepliedNote answered={header.answered} forwarded={header.forwarded} />}
           {header.snoozedUntil ? <SnoozedBanner header={header} /> : null}
           {state.status !== 'ready' ? notices : null}
           {state.status === 'loading' ? (

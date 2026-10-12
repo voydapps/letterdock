@@ -1117,10 +1117,15 @@ svg.i.fill {
   padding: 0 2px;
   z-index: 2;
 }
-.row:hover .hov,
-.row:focus-within .hov,
-.row.focus .hov {
+/* Quick actions show only while the mouse is over the row (DESIGN-SPEC 3.16). Keyboard users have the
+   shortcuts and the context menu; touch screens (no hover) never show the panel. */
+.row:hover .hov {
   display: flex;
+}
+@media (hover: none) {
+  .row .hov {
+    display: none !important;
+  }
 }
 .row:hover .tm,
 .row:hover .ico {

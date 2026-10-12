@@ -124,3 +124,19 @@ export function escapeHtml(s: string): string {
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   );
 }
+
+/** "Replied", "Forwarded" or "Replied and forwarded" for the list row mark; '' when neither (DESIGN-SPEC 3.16). */
+export function repliedLabel(answered: boolean | undefined, forwarded: boolean | undefined): string {
+  if (answered && forwarded) return 'Replied and forwarded';
+  if (answered) return 'Replied';
+  if (forwarded) return 'Forwarded';
+  return '';
+}
+
+/** The no-date line in the reading pane ("You replied to this message."); '' when neither. */
+export function repliedNote(answered: boolean | undefined, forwarded: boolean | undefined): string {
+  if (answered && forwarded) return 'You replied to and forwarded this message.';
+  if (answered) return 'You replied to this message.';
+  if (forwarded) return 'You forwarded this message.';
+  return '';
+}

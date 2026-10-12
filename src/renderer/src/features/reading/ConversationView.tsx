@@ -15,7 +15,7 @@ import { CONV_MOVE_EVENT } from '../../lib/shortcuts';
 import { fullDate, initials, senderName } from '../../lib/format';
 import { toastError } from '../../store/toasts';
 import { CardBody, MessageView, SourceDialog } from './ReadingPane';
-import { MutedNotice } from './notices';
+import { MutedNotice, RepliedNote } from './notices';
 import { canMakeRuleFrom, createRuleFromSender } from '../rules/ruleActions';
 import { AddressButton, AddressLinks } from '../../components/ContactPopover';
 
@@ -691,6 +691,7 @@ function Card({
               <dd>{fullDate(h.date)}</dd>
             </dl>
           ) : null}
+          {h.draft ? null : <RepliedNote answered={h.answered} forwarded={h.forwarded} />}
           <CardBody header={h} />
         </div>
       </Collapsible>

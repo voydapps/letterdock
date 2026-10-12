@@ -340,6 +340,9 @@ export class ComposeService implements DraftsApi {
    * Reply, Reply all or Forward of a message that is not in a mailbox (an opened .eml file, DESIGN-SPEC
    * 3.14). Uses the default account (the first one that is turned on). The draft is saved at once with
    * its body and attachment files, so `compose.prepare({ draftId })` can open it without the file.
+   *
+   * Note (DESIGN-SPEC 3.16): a file-mode reply has no source row in the database, so there is no `sourceMessageId`
+   * and `markReplied` is never called for it. Nothing is marked as replied or forwarded; that is intended.
    */
   async prepareFromParsed(
     src: MessageBody,

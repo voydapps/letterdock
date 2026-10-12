@@ -7,7 +7,7 @@ import { Button } from '../../components/ui';
 import { useApp } from '../../store/app';
 import { call } from '../../lib/api';
 import { openSnoozeMenu, setMuted, unsnoozeMessages } from '../../lib/light';
-import { senderName } from '../../lib/format';
+import { repliedNote, senderName } from '../../lib/format';
 import { whenText } from '../../lib/schedule';
 import { snoozeUntilText } from '../../lib/snooze';
 
@@ -135,6 +135,18 @@ export function MutedNotice({ header }: { header: MessageHeader }) {
       <Button size="sm" variant="subtle" onClick={() => void setMuted([header.id], false)}>
         Unmute
       </Button>
+    </div>
+  );
+}
+
+/** "You replied to this message." Small line with no date (the date is not stored). Not for drafts. */
+export function RepliedNote({ answered, forwarded }: { answered?: boolean; forwarded?: boolean }) {
+  const text = repliedNote(answered, forwarded);
+  if (!text) return null;
+  return (
+    <div className="rrepl" role="note">
+      <Icon name={answered ? 'reply' : 'fwd'} />
+      <span>{text}</span>
     </div>
   );
 }

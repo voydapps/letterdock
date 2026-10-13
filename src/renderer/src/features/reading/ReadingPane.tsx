@@ -1004,6 +1004,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       // The box that grows is the conversation card, or the wrapper around a single message's body.
       const growBox = (frame.closest('.ccard') ?? frame.closest('.mgrow')) as HTMLElement | null;
       const growRoot = frame.closest('.rbody') as HTMLElement | null;
+      const growCol = frame.closest('.rin') as HTMLElement | null; // the centered readable column
       const growTo = (need: number) => {
         if (!growBox || !growRoot || !wrap) return;
         const cs = getComputedStyle(growRoot);
@@ -1015,19 +1016,18 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         const want = Math.min(availW, Math.ceil(need + chrome));
         if (want <= boxRect.width + 1) return;
         const minLeft = rb.left + growRoot.clientLeft + padL;
-        // Same left edge as the header; it only moves left when the right side has no room.
+        // Same left edge as the header. When the right side has no room, the whole column (header and body
+        // together) moves left, so they stay aligned.
         const left = Math.max(minLeft, Math.min(boxRect.left, minLeft + availW - want));
         growBox.style.width = `${want}px`;
-        growBox.style.marginLeft = `${Math.round(left - boxRect.left)}px`;
+        if (growCol && left < boxRect.left - 0.5) growCol.style.marginLeft = `${Math.round(left - minLeft)}px`;
       };
       const measure = () => {
         // Judge the message at the readable column width every time (the grown size must not feed the decision,
         // or it would flip back and forth), so a pane that gets wider or narrower is measured fresh.
         const keepLeft = wrap?.scrollLeft ?? 0;
-        if (growBox && growBox.style.width) {
-          growBox.style.width = '';
-          growBox.style.marginLeft = '';
-        }
+        if (growBox && growBox.style.width) growBox.style.width = '';
+        if (growCol && growCol.style.marginLeft) growCol.style.marginLeft = '';
         if (frame.style.width) frame.style.width = '';
         frame.style.height = '0px';
         const sw = Math.max(docEl.scrollWidth, doc.body?.scrollWidth ?? 0);

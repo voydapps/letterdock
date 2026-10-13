@@ -278,7 +278,7 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
         expect(m.rinW).toBeLessThanOrEqual(760); // the header keeps the readable column
         expect(m.subW).toBeLessThanOrEqual(760);
         expect(m.growW).toBeGreaterThan(760); // the body grew out of it
-        expect(m.growL).toBeLessThanOrEqual(m.rinL + 0.5); // starts at the header edge, or left of it only when the right side has no room
+        expect(m.growL).toBeCloseTo(m.rinL, 0); // the body starts at the header's left edge
         expect(m.wrapClass).toBe('mscroll'); // no sideways scrolling
         expect(m.sw).toBeLessThanOrEqual(m.cw);
         expect(m.frameStyleW).toBe('');
@@ -349,6 +349,41 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       await page.waitForTimeout(900);
       const mid = await state(page);
       expect(mid.growL + mid.growW).toBeLessThanOrEqual(mid.rbodyR);
+      expect(mid.growL).toBeCloseTo(mid.rinL, 0); // header and body stay aligned
+    } finally {
+      await close();
+    }
+  }, 60_000);
+
+  it('the message window uses the full window width for a wide email', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const { page, close } = await open('Daily Confirmation', 'light', 800, 1900);
+    try {
+      const id = await page.evaluate(async () => {
+        const l = await (window as unknown as { api: { invoke: (c: string, a: unknown) => Promise<{ items: { id: string; subject: string }[] }> } }).api.invoke('messages.list', { scope: { kind: 'unifiedInbox' }, cursor: null, limit: 100 });
+        return l.items.find((m) => m.subject.startsWith('Daily Confirmation'))!.id;
+      });
+      const w = await page.context().newPage();
+      await w.goto(`${base}/viewer.html?fake=1&scenario=demo#msg=${id}`);
+      await w.waitForSelector('.mbody iframe');
+      await w.waitForTimeout(1500);
+      const m = await w.evaluate(() => {
+        const g = document.querySelector<HTMLElement>('.mgrow')!;
+        const wrap = document.querySelector<HTMLElement>('.mscroll')!;
+        return {
+          grown: g.dataset.grown ?? '',
+          cls: wrap.className,
+          sw: wrap.scrollWidth,
+          cw: wrap.clientWidth,
+          left: g.getBoundingClientRect().left,
+          rin: document.querySelector('.rin')!.getBoundingClientRect().left,
+        };
+      });
+      expect(m.grown).toBe('1');
+      expect(m.cls).toBe('mscroll');
+      expect(m.sw).toBeLessThanOrEqual(m.cw);
+      expect(m.left).toBeCloseTo(m.rin, 0);
+      await w.close();
     } finally {
       await close();
     }
@@ -374,7 +409,10 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       expect(grown[0]!.w).toBeGreaterThan(760);
       const others = m.cards.filter((c) => c.grown !== '1');
       expect(others.length).toBeGreaterThan(0);
-      for (const c of others) expect(c.w).toBeLessThanOrEqual(760);
+      for (const c of others) {
+        expect(c.w).toBeLessThanOrEqual(760);
+        expect(c.left).toBeCloseTo(grown[0]!.left, 0); // all cards share the left edge
+      }
       expect(m.wrapClass).toBe('mscroll');
       expect(m.sw).toBeLessThanOrEqual(m.cw);
       await shot(page, 'wide-card-1900.png');

@@ -265,6 +265,8 @@
 /* ----- cards open and close over 167 ms; a card whose message left closes the same way (DESIGN-SPEC 3.10.4, 3.10.6) ----- */
 .cexp {
   display: grid;
+  /* The column may shrink below the width of a wide message inside (it scrolls sideways there). */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 0fr;
   transition: grid-template-rows 167ms ease;
 }

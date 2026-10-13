@@ -44,6 +44,7 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
     height = 800,
     width = 1400,
     query = '',
+    scenario = '',
   ): Promise<{ page: Page; close: () => Promise<void> }> {
     const ctx = await browser!.newContext({
       viewport: { width, height },
@@ -53,8 +54,12 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
     const page = await ctx.newPage();
     await page.goto(`${base}/?fake=1&scenario=demo${query}`);
     await page.waitForSelector('.panes');
+    if (scenario) {
+      await page.evaluate((n) => (window as unknown as { __fakeScenario: (x: string) => void }).__fakeScenario(n), scenario);
+      await page.waitForTimeout(800);
+    }
     await page.getByText(subject).first().click();
-    await page.waitForSelector(subject === 'Weekend plans' ? '.cexp.on' : '.mbody iframe');
+    await page.waitForSelector(subject === 'Weekend plans' ? '.cexp.on' : '.mbody iframe, .cvirt .ccard.open');
     await page.waitForTimeout(1200);
     return { page, close: () => ctx.close() };
   }
@@ -247,7 +252,11 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
     page.evaluate((last) => {
       const f = document.querySelector<HTMLIFrameElement>('.mbody iframe')!;
       const w = f.parentElement!;
-      const g = document.querySelector<HTMLElement>('.mgrow')!;
+      const g = document.querySelector<HTMLElement>('.rin')!;
+      const rbx = document.querySelector('.rbody') as HTMLElement;
+      const cs = getComputedStyle(rbx);
+      const contentL = rbx.getBoundingClientRect().left + rbx.clientLeft + parseFloat(cs.paddingLeft);
+      const contentR = rbx.getBoundingClientRect().left + rbx.clientLeft + rbx.clientWidth - parseFloat(cs.paddingRight);
       const th = [...f.contentDocument!.querySelectorAll('th')].find((t) => t.textContent === last)!;
       return {
         frameStyleW: f.style.width,
@@ -255,12 +264,13 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
         sw: w.scrollWidth,
         cw: w.clientWidth,
         grown: g.dataset.grown ?? '',
-        growW: g.getBoundingClientRect().width,
-        growL: g.getBoundingClientRect().left,
+        lm: g.getBoundingClientRect().left - contentL,
+        rm: contentR - g.getBoundingClientRect().right,
+        headL: document.querySelector('.rsub')!.getBoundingClientRect().left,
+        bodyL: w.getBoundingClientRect().left,
         rinW: document.querySelector('.rin')!.getBoundingClientRect().width,
         rinL: document.querySelector('.rin')!.getBoundingClientRect().left,
         subW: document.querySelector('.rsub')!.getBoundingClientRect().width,
-        rbodyR: document.querySelector('.rbody')!.getBoundingClientRect().right,
         barHidden: document.querySelector<HTMLElement>('.mbar')!.hidden,
         fade: getComputedStyle(document.querySelector('.mfade')!).opacity,
         lastRight: f.getBoundingClientRect().left + th.getBoundingClientRect().right,
@@ -275,10 +285,10 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       try {
         const m = await state(page);
         expect(m.grown).toBe('1');
-        expect(m.rinW).toBeLessThanOrEqual(760); // the header keeps the readable column
-        expect(m.subW).toBeLessThanOrEqual(760);
-        expect(m.growW).toBeGreaterThan(760); // the body grew out of it
-        expect(m.growL).toBeCloseTo(m.rinL, 0); // the body starts at the header's left edge
+        expect(m.rinW).toBeGreaterThan(760); // the column (header and body together) grew
+        expect(m.subW).toBeGreaterThan(760);
+        expect(Math.abs(m.lm - m.rm)).toBeLessThanOrEqual(1); // still centred: equal margins
+        expect(m.headL).toBeCloseTo(m.bodyL, 0); // header and body share the left edge
         expect(m.wrapClass).toBe('mscroll'); // no sideways scrolling
         expect(m.sw).toBeLessThanOrEqual(m.cw);
         expect(m.frameStyleW).toBe('');
@@ -287,7 +297,19 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
         expect(m.lastRight).toBeLessThanOrEqual(m.wrapRight); // the last column is on screen
         // It is stable: nothing changes while we wait (no loop between growing and measuring).
         await page.waitForTimeout(600);
-        expect((await state(page)).growW).toBe(m.growW);
+        expect((await state(page)).rinW).toBe(m.rinW);
+        // The date and the "Show original colors" button sit at the right edge of the widened column.
+        const edges = await page.evaluate(() => {
+          const col = document.querySelector('.rin')!.getBoundingClientRect();
+          const btn = document.querySelector('.mtoggle button')?.getBoundingClientRect();
+          const body = document.querySelector('.mscroll')!.getBoundingClientRect();
+          return { colRight: col.right, btnRight: btn?.right ?? null, bodyRight: body.right };
+        });
+        expect(edges.bodyRight).toBeLessThanOrEqual(edges.colRight + 1);
+        if (theme === 'dark') {
+          expect(edges.btnRight).not.toBeNull();
+          expect(edges.btnRight!).toBeCloseTo(edges.colRight, 0);
+        }
         await shot(page, theme === 'light' ? 'wide-fit-1900.png' : 'wide-fit-1900-dark.png');
       } finally {
         await close();
@@ -304,7 +326,8 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       expect(m.wrapClass).toBe('mscroll wide');
       expect(m.barHidden).toBe(false);
       expect(m.fade).toBe('1');
-      expect(m.growW).toBeLessThanOrEqual(m.rinW);
+      expect(Math.abs(m.lm - m.rm)).toBeLessThanOrEqual(1);
+      expect(m.headL).toBeCloseTo(m.bodyL, 0);
       await shot(narrow.page, 'wide-narrow.png');
     } finally {
       await narrow.close();
@@ -314,14 +337,28 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       try {
         const m = await page.evaluate(() => ({
           rin: document.querySelector('.rin')!.getBoundingClientRect().width,
-          grow: document.querySelector<HTMLElement>('.mgrow')!.getBoundingClientRect().width,
-          grown: document.querySelector<HTMLElement>('.mgrow')!.dataset.grown ?? '',
-          style: document.querySelector<HTMLElement>('.mgrow')!.getAttribute('style') ?? '',
+          lm: (() => {
+            const rb = document.querySelector('.rbody') as HTMLElement;
+            return document.querySelector('.rin')!.getBoundingClientRect().left - (rb.getBoundingClientRect().left + rb.clientLeft + parseFloat(getComputedStyle(rb).paddingLeft));
+          })(),
+          rm: (() => {
+            const rb = document.querySelector('.rbody') as HTMLElement;
+            return rb.getBoundingClientRect().left + rb.clientLeft + rb.clientWidth - parseFloat(getComputedStyle(rb).paddingRight) - document.querySelector('.rin')!.getBoundingClientRect().right;
+          })(),
+          sub: document.querySelector('.rsub')!.getBoundingClientRect().left,
+          body: document.querySelector('.mscroll')!.getBoundingClientRect().left,
+          grown: document.querySelector<HTMLElement>('.rin')!.dataset.grown ?? '',
+          style: document.querySelector<HTMLElement>('.rin')!.getAttribute('style') ?? '',
         }));
         expect(m.grown).toBe('');
         expect(m.style).toBe('');
-        expect(m.grow).toBe(m.rin);
-        if (width === 1900) expect(m.rin).toBe(760);
+        expect(m.rin).toBeLessThanOrEqual(760);
+        expect(Math.abs(m.lm - m.rm)).toBeLessThanOrEqual(1); // centred: equal margins
+        expect(m.sub).toBeCloseTo(m.body, 0);
+        if (width === 1900) {
+          expect(m.rin).toBe(760);
+          await shot(page, 'normal-1900.png');
+        }
       } finally {
         await close();
       }
@@ -343,13 +380,14 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       const back = await state(page);
       expect(back.wrapClass).toBe('mscroll wide');
       expect(back.grown).toBe('');
-      expect(back.growW).toBe(back.rinW);
-      // In between: it never goes past the right edge of the pane.
+      expect(Math.abs(back.lm - back.rm)).toBeLessThanOrEqual(1);
+      // In between: always centred, header and body aligned.
       await page.setViewportSize({ width: 1600, height: 800 });
       await page.waitForTimeout(900);
       const mid = await state(page);
-      expect(mid.growL + mid.growW).toBeLessThanOrEqual(mid.rbodyR);
-      expect(mid.growL).toBeCloseTo(mid.rinL, 0); // header and body stay aligned
+      expect(mid.lm).toBeGreaterThanOrEqual(-1);
+      expect(Math.abs(mid.lm - mid.rm)).toBeLessThanOrEqual(1);
+      expect(mid.headL).toBeCloseTo(mid.bodyL, 0);
     } finally {
       await close();
     }
@@ -368,28 +406,80 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
       await w.waitForSelector('.mbody iframe');
       await w.waitForTimeout(1500);
       const m = await w.evaluate(() => {
-        const g = document.querySelector<HTMLElement>('.mgrow')!;
+        const g = document.querySelector<HTMLElement>('.rin')!;
         const wrap = document.querySelector<HTMLElement>('.mscroll')!;
         return {
           grown: g.dataset.grown ?? '',
           cls: wrap.className,
           sw: wrap.scrollWidth,
           cw: wrap.clientWidth,
-          left: g.getBoundingClientRect().left,
-          rin: document.querySelector('.rin')!.getBoundingClientRect().left,
+          lm: g.getBoundingClientRect().left,
+          rm: window.innerWidth - g.getBoundingClientRect().right,
+          head: document.querySelector('.rsub')!.getBoundingClientRect().left,
+          body: wrap.getBoundingClientRect().left,
         };
       });
       expect(m.grown).toBe('1');
       expect(m.cls).toBe('mscroll');
       expect(m.sw).toBeLessThanOrEqual(m.cw);
-      expect(m.left).toBeCloseTo(m.rin, 0);
+      expect(m.head).toBeCloseTo(m.body, 0);
+      expect(Math.abs(m.lm - m.rm)).toBeLessThanOrEqual(20); // centred (the window's own scrollbar is on the right)
       await w.close();
     } finally {
       await close();
     }
   }, 60_000);
 
-  it('a conversation card with a wide message grows; the other cards keep their width', async (ctx) => {
+  it('a conversation of over 50 messages (virtual list) grows the wide card and keeps the list in order', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const { page, close } = await open('Release checklist', 'light', 800, 1900, '', 'longThread');
+    try {
+      await page.waitForSelector('.cvirt .ccard.open .mbody iframe');
+      await page.waitForTimeout(1500);
+      const layout = () =>
+        page.evaluate(() => {
+          const items = [...document.querySelectorAll<HTMLElement>('.cvitem')].map((el) => {
+            const r = el.getBoundingClientRect();
+            const card = el.querySelector<HTMLElement>('.ccard')!;
+            return { top: r.top, bottom: r.bottom, h: r.height, cardH: card.getBoundingClientRect().height, grown: document.querySelector<HTMLElement>('.rin')!.dataset.grown ?? '', cardRight: card.getBoundingClientRect().right };
+          });
+          const rb = document.querySelector('.rbody') as HTMLElement;
+          const wrap = [...document.querySelectorAll<HTMLElement>('.cvirt .ccard.open .mscroll')].pop();
+          return { items, rbRight: rb.getBoundingClientRect().right, rbSW: rb.scrollWidth, rbCW: rb.clientWidth, wrapClass: wrap?.className ?? '', virtH: document.querySelector<HTMLElement>('.cvirt')!.getBoundingClientRect().height };
+        });
+      const check = (l: Awaited<ReturnType<typeof layout>>) => {
+        expect(l.items.length).toBeGreaterThan(0);
+        for (let i = 1; i < l.items.length; i++) expect(l.items[i]!.top).toBeGreaterThanOrEqual(l.items[i - 1]!.bottom - 1); // no overlap
+        for (const it of l.items) {
+          expect(it.h).toBeGreaterThanOrEqual(it.cardH); // the measured row holds its card
+          expect(it.cardRight).toBeLessThanOrEqual(l.rbRight + 1);
+        }
+        expect(l.rbSW).toBeLessThanOrEqual(l.rbCW + 1); // the pane itself does not scroll sideways
+      };
+      const l1 = await layout();
+      check(l1);
+      expect(l1.items.some((x) => x.grown === '1')).toBe(true);
+      expect(l1.wrapClass).toBe('mscroll'); // fits: no sideways scroll
+      // Scroll up through the list (cards come and go), then open a wide message in the middle.
+      await page.evaluate(() => { const rb = document.querySelector('.rbody')!; rb.scrollTop = rb.scrollHeight / 2; });
+      await page.waitForTimeout(600);
+      check(await layout());
+      await page.evaluate(() => { const rb = document.querySelector('.rbody')!; rb.scrollTop = 0; });
+      await page.waitForTimeout(600);
+      check(await layout());
+      // Narrow window: the same list scrolls the wide card sideways and stays in order.
+      await page.setViewportSize({ width: 1400, height: 800 });
+      await page.evaluate(() => { const rb = document.querySelector('.rbody')!; rb.scrollTop = rb.scrollHeight; });
+      await page.waitForTimeout(1000);
+      const l2 = await layout();
+      check(l2);
+      expect(l2.wrapClass).toBe('mscroll wide');
+    } finally {
+      await close();
+    }
+  }, 90_000);
+
+  it('a conversation with a wide message: the column widens (centred) and all cards share it', async (ctx) => {
     if (!browser) return ctx.skip();
     const { page, close } = await open('Weekend plans', 'light', 800, 1900, '&widecard=1');
     try {
@@ -399,19 +489,18 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
         const cards = [...document.querySelectorAll<HTMLElement>('.ccard')].map((c) => ({
           w: c.getBoundingClientRect().width,
           left: c.getBoundingClientRect().left,
-          grown: c.dataset.grown ?? '',
+          grown: document.querySelector<HTMLElement>('.rin')!.dataset.grown ?? '',
         }));
         const wrap = document.querySelector<HTMLElement>('.ccard.open .mscroll')!;
         return { cards, wrapClass: wrap.className, sw: wrap.scrollWidth, cw: wrap.clientWidth };
       });
-      const grown = m.cards.filter((c) => c.grown === '1');
-      expect(grown.length).toBe(1);
-      expect(grown[0]!.w).toBeGreaterThan(760);
-      const others = m.cards.filter((c) => c.grown !== '1');
-      expect(others.length).toBeGreaterThan(0);
-      for (const c of others) {
-        expect(c.w).toBeLessThanOrEqual(760);
-        expect(c.left).toBeCloseTo(grown[0]!.left, 0); // all cards share the left edge
+      // The wide message widens the whole column: all cards are wider than 760 and share the same edges (centred).
+      expect(m.cards.length).toBeGreaterThan(1);
+      for (const c of m.cards) {
+        expect(c.grown).toBe('1');
+        expect(c.w).toBeGreaterThan(760);
+        expect(c.left).toBeCloseTo(m.cards[0]!.left, 0);
+        expect(c.w).toBeCloseTo(m.cards[0]!.w, 0);
       }
       expect(m.wrapClass).toBe('mscroll');
       expect(m.sw).toBeLessThanOrEqual(m.cw);

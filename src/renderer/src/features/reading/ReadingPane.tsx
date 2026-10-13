@@ -943,6 +943,32 @@ function BodyView({
 }
 
 const MIN_FRAME_HEIGHT = 24;
+// Wide messages and the width of their column. A conversation has many frames in one column: each one says how wide
+// it needs the column to be (0 = the readable width is enough), and the column takes the widest, up to the pane.
+const columnNeeds = new WeakMap<HTMLElement, Map<HTMLElement, number>>();
+function setColumnNeed(col: HTMLElement, root: HTMLElement, frame: HTMLElement, need: number): void {
+  let m = columnNeeds.get(col);
+  if (!m) columnNeeds.set(col, (m = new Map()));
+  if (need > 0) m.set(frame, need);
+  else m.delete(frame);
+  const cs = getComputedStyle(root);
+  const avail = root.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  const widest = Math.max(0, ...m.values());
+  const base = col.style.maxWidth;
+  col.style.maxWidth = '';
+  const readable = col.getBoundingClientRect().width;
+  const want = Math.min(avail, widest);
+  if (want > readable + 1) {
+    col.style.maxWidth = `${want}px`;
+    col.dataset.grown = '1';
+  } else {
+    col.dataset.grown = '';
+    if (base && !want) col.style.maxWidth = '';
+  }
+}
+function dropColumnNeed(col: HTMLElement | null, root: HTMLElement | null, frame: HTMLElement): void {
+  if (col && root && columnNeeds.get(col)?.has(frame)) setColumnNeed(col, root, frame, 0);
+}
 const FRAME_KEYS: ShortcutId[] = ['back', 'closeWindow', 'print', 'reply', 'replyAll', 'forward', 'delete', 'archive', 'markUnread', 'move', 'nextPane', 'prevPane'];
 
 function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; onReject: () => void }) {
@@ -1000,43 +1026,25 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         // Right-edge hint: more content to the right.
         (wrap.parentElement as HTMLElement).dataset.more = wide && wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1 ? '1' : '';
       };
-      // A message wider than the readable column grows out of it, up to the free width of the pane (or window).
-      // The box that grows is the conversation card, or the wrapper around a single message's body.
-      const growBox = (frame.closest('.ccard') ?? frame.closest('.mgrow')) as HTMLElement | null;
+      // A message wider than the readable column makes the whole column (header and body) wider, up to the free
+      // width of the pane or window. The column stays centred, so the left and right margins stay equal.
+      const growCol = frame.closest('.rin') as HTMLElement | null;
       const growRoot = frame.closest('.rbody') as HTMLElement | null;
-      const growCol = frame.closest('.rin') as HTMLElement | null; // the centered readable column
-      const growTo = (need: number) => {
-        if (!growBox || !growRoot || !wrap) return;
-        const cs = getComputedStyle(growRoot);
-        const rb = growRoot.getBoundingClientRect();
-        const padL = parseFloat(cs.paddingLeft) || 0;
-        const availW = growRoot.clientWidth - padL - (parseFloat(cs.paddingRight) || 0);
-        const boxRect = growBox.getBoundingClientRect();
-        const chrome = boxRect.width - wrap.clientWidth; // card border and padding around the frame
-        const want = Math.min(availW, Math.ceil(need + chrome));
-        if (want <= boxRect.width + 1) return;
-        const minLeft = rb.left + growRoot.clientLeft + padL;
-        // Same left edge as the header. When the right side has no room, the whole column (header and body
-        // together) moves left, so they stay aligned.
-        const left = Math.max(minLeft, Math.min(boxRect.left, minLeft + availW - want));
-        growBox.style.width = `${want}px`;
-        if (growCol && left < boxRect.left - 0.5) growCol.style.marginLeft = `${Math.round(left - minLeft)}px`;
-      };
       const measure = () => {
         // Judge the message at the readable column width every time (the grown size must not feed the decision,
         // or it would flip back and forth), so a pane that gets wider or narrower is measured fresh.
         const keepLeft = wrap?.scrollLeft ?? 0;
-        if (growBox && growBox.style.width) growBox.style.width = '';
-        if (growCol && growCol.style.marginLeft) growCol.style.marginLeft = '';
+        if (growCol) growCol.style.maxWidth = '';
         if (frame.style.width) frame.style.width = '';
         frame.style.height = '0px';
         const sw = Math.max(docEl.scrollWidth, doc.body?.scrollWidth ?? 0);
-        if (sw > docEl.clientWidth + 1) {
-          growTo(sw);
-          // Still wider than the free width: the wrapper scrolls it sideways.
-          if (wrap ? sw > wrap.clientWidth + 1 : sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
+        let need = 0;
+        if (growCol && wrap && sw > wrap.clientWidth + 1) {
+          need = Math.ceil(sw) + (growCol.getBoundingClientRect().width - wrap.clientWidth); // plus card border and padding
         }
-        if (growBox) growBox.dataset.grown = growBox.style.width ? '1' : '';
+        if (growCol && growRoot) setColumnNeed(growCol, growRoot, frame, need);
+        // Still wider than the free width: the wrapper scrolls it sideways.
+        if (wrap ? sw > wrap.clientWidth + 1 : sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
         if (wrap && keepLeft) wrap.scrollLeft = keepLeft;
         const h = Math.max(docEl.scrollHeight, doc.body?.scrollHeight ?? 0);
         frame.style.height = `${Math.max(MIN_FRAME_HEIGHT, Math.ceil(h))}px`;
@@ -1191,6 +1199,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       frame.removeEventListener('load', bindDoc);
       barEl?.removeEventListener('scroll', onBarScroll);
       frame.removeEventListener('load', attach);
+      dropColumnNeed(frame.closest('.rin'), frame.closest('.rbody'), frame);
       ro?.disconnect();
       if (revealTimer) clearTimeout(revealTimer);
     };
@@ -1212,7 +1221,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
     </div>
   );
   return (
-    <div className="mgrow">
+    <>
       {plan.card ? <div className="mcard">{iframe}</div> : iframe}
       <div className="mbar" ref={barRef} hidden aria-hidden="true" tabIndex={-1}>
         <div ref={barInnerRef} />
@@ -1237,7 +1246,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
           </div>
         </Dialog>
       ) : null}
-    </div>
+    </>
   );
 }
 

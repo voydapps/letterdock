@@ -31,6 +31,7 @@ import type {
 import { emlFileName } from '../../../shared/fileName';
 import type { EmlErrorCode } from '../../../shared/emlErrors';
 import { buildDemo } from './demoData';
+import { wideStatementHtml } from './wideStatementHtml';
 
 const now = Date.now();
 const isComposeWindow = location.pathname.endsWith('compose.html');
@@ -2110,6 +2111,8 @@ function runScenario(name: string): void {
           snippet: `Step ${i + 1}: checked the list and ticked the next item.`, seen: i < 118, flagged: false, answered: false,
           draft: false, hasAttachments: false, size: 2000, bodyCached: true, threadId: `fake:a1:release checklist`,
         });
+        // The newest message and one in the middle carry a wide statement (fixed 1000 px tables): they must grow or scroll in the virtual list.
+        if (i === 119 || i === 60) fixtureBodies.set(mid, { html: wideStatementHtml(), text: null });
         added.push(mid++);
       }
       changed({ added, folderIds: [inbox.id] });

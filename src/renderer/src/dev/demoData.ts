@@ -110,7 +110,7 @@ const libraryHtml = `<div style="font-family:Segoe UI,Arial,sans-serif;color:#22
 
 const txt = (greeting: string, lines: string[], sign: string): string => `${greeting}\n\n${lines.join('\n\n')}\n\n${sign}`;
 
-export function buildDemo(now: number): Demo {
+export function buildDemo(now: number, wideCard = false): Demo {
   // ---------- accounts and folders ----------
   const accountRows: [string, string, string, string, Account['provider']][] = [
     ['a1', 'Personal', 'anna@example.com', '#0F6CBD', 'gmail'],
@@ -242,6 +242,23 @@ export function buildDemo(now: number): Demo {
       txt('Hi Anna,', ['Tom is in too! The weather looks good, around 18 degrees.', 'Bring a jacket just in case. I will bring a thermos of tea.'], 'See you Saturday,\nBen') +
       '\n\nOn Mon, 12 Oct 2026 at 18:30, Ben Carter <ben.carter@example.net> wrote:\n> Let us meet at 9 at the trailhead parking. Mia is in.\n> Tom is checking his shifts and will tell us tonight.\n',
   });
+
+  // Tests (?widecard=1): the newest reply carries a table of fixed 1000 px, so its conversation card has to grow.
+  if (wideCard) {
+    const cell = (t: string): string =>
+      `<td nowrap style="padding:3px 6px;white-space:nowrap;border:1px solid #c0c0c0;font:12px Tahoma,Arial,sans-serif">${t}</td>`;
+    const line = (c: string[]): string => `<tr>${c.map(cell).join('')}</tr>`;
+    bodies.set(w4, {
+      html:
+        '<div dir="ltr">Hi Anna,<br><br>Tom is in too! The plan for the day:<br><br>' +
+        '<table width="1000" cellpadding="0" cellspacing="0" style="width:1000px;border-collapse:collapse">' +
+        line(['Time', 'Where we meet', 'What we do there', 'Who brings what', 'Distance on foot', 'Height gain', 'Walking time', 'Weather expected', 'Notes for the day']) +
+        line(['09:00', 'Trailhead parking', 'Start of the hike', 'Anna: sandwiches', '0 km', '0 m', '0 min', '14 degrees, dry', 'Meet at the gate']) +
+        line(['12:30', 'Cedar Ridge', 'Lunch with a view', 'Ben: tea, Tom: fruit', '6.5 km', '420 m', '2 h 20 min', '18 degrees, sun', 'Bring a jacket']) +
+        '</table><br>See you Saturday,<br>Ben</div>',
+      text: null,
+    });
+  }
 
   const q3 = 'Q3 report: final numbers';
   add('a2', 'inbox', 20 * H, P.tom, q3, 'Hi Anna, the final Q3 numbers are in the shared sheet. Please check the travel line before we send it on.', { answered: true });

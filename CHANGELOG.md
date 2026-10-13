@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.14 - 2026-10-13
+### Changed
+- Wide emails now use all the free width of the reading pane, so a whole table is shown when it fits. You only scroll sideways when the window is too narrow.
+
 ## 0.6.13 - 2026-10-12
 ### Fixed
 - Very wide emails (for example account statements) were cut off on the right. You can now scroll them sideways.

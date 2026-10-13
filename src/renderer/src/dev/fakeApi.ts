@@ -37,7 +37,7 @@ const isComposeWindow = location.pathname.endsWith('compose.html');
 const isViewerWindow = location.pathname.endsWith('viewer.html');
 // ?fake=1&scenario=demo: invented accounts and mail for the website pictures (see demoData.ts).
 const DEMO = new URLSearchParams(location.search).get('scenario') === 'demo';
-const demo = DEMO ? buildDemo(now) : null;
+const demo = DEMO ? buildDemo(now, new URLSearchParams(location.search).get('widecard') === '1') : null;
 
 const accounts: Account[] = [
   ['a1', 'Personal Gmail', 'alex.rivera@gmail.example', '#0F6CBD', 'gmail'],

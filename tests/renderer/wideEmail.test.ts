@@ -42,14 +42,16 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
     subject: string,
     theme: 'light' | 'dark',
     height = 800,
+    width = 1400,
+    query = '',
   ): Promise<{ page: Page; close: () => Promise<void> }> {
     const ctx = await browser!.newContext({
-      viewport: { width: 1400, height },
+      viewport: { width, height },
       colorScheme: theme,
       locale: 'en-US',
     });
     const page = await ctx.newPage();
-    await page.goto(`${base}/?fake=1&scenario=demo`);
+    await page.goto(`${base}/?fake=1&scenario=demo${query}`);
     await page.waitForSelector('.panes');
     await page.getByText(subject).first().click();
     await page.waitForSelector(subject === 'Weekend plans' ? '.cexp.on' : '.mbody iframe');
@@ -237,35 +239,145 @@ describe('wide emails in the reading pane (real Chromium; skipped when it is not
     }
   }, 60_000);
 
-  it('the frame returns to width:100% with no bar when the pane gets wider than the statement', async (ctx) => {
+  // Pictures go to SHOTS_DIR when it is set (a one-off look, not part of the normal run).
+  const shot = async (page: Page, name: string): Promise<void> => {
+    if (process.env.SHOTS_DIR) await page.screenshot({ path: join(process.env.SHOTS_DIR, name) });
+  };
+  const state = (page: Page) =>
+    page.evaluate((last) => {
+      const f = document.querySelector<HTMLIFrameElement>('.mbody iframe')!;
+      const w = f.parentElement!;
+      const g = document.querySelector<HTMLElement>('.mgrow')!;
+      const th = [...f.contentDocument!.querySelectorAll('th')].find((t) => t.textContent === last)!;
+      return {
+        frameStyleW: f.style.width,
+        wrapClass: w.className,
+        sw: w.scrollWidth,
+        cw: w.clientWidth,
+        grown: g.dataset.grown ?? '',
+        growW: g.getBoundingClientRect().width,
+        growL: g.getBoundingClientRect().left,
+        rinW: document.querySelector('.rin')!.getBoundingClientRect().width,
+        rinL: document.querySelector('.rin')!.getBoundingClientRect().left,
+        subW: document.querySelector('.rsub')!.getBoundingClientRect().width,
+        rbodyR: document.querySelector('.rbody')!.getBoundingClientRect().right,
+        barHidden: document.querySelector<HTMLElement>('.mbar')!.hidden,
+        fade: getComputedStyle(document.querySelector('.mfade')!).opacity,
+        lastRight: f.getBoundingClientRect().left + th.getBoundingClientRect().right,
+        wrapRight: w.getBoundingClientRect().right,
+      };
+    }, WIDE_LAST_COLUMN);
+
+  for (const theme of ['light', 'dark'] as const) {
+    it(`a wide window shows the whole statement without sideways scrolling (${theme})`, async (ctx) => {
+      if (!browser) return ctx.skip();
+      const { page, close } = await open('Daily Confirmation', theme, 800, 1900);
+      try {
+        const m = await state(page);
+        expect(m.grown).toBe('1');
+        expect(m.rinW).toBeLessThanOrEqual(760); // the header keeps the readable column
+        expect(m.subW).toBeLessThanOrEqual(760);
+        expect(m.growW).toBeGreaterThan(760); // the body grew out of it
+        expect(m.growL).toBeLessThanOrEqual(m.rinL + 0.5); // starts at the header edge, or left of it only when the right side has no room
+        expect(m.wrapClass).toBe('mscroll'); // no sideways scrolling
+        expect(m.sw).toBeLessThanOrEqual(m.cw);
+        expect(m.frameStyleW).toBe('');
+        expect(m.barHidden).toBe(true);
+        expect(m.fade).toBe('0');
+        expect(m.lastRight).toBeLessThanOrEqual(m.wrapRight); // the last column is on screen
+        // It is stable: nothing changes while we wait (no loop between growing and measuring).
+        await page.waitForTimeout(600);
+        expect((await state(page)).growW).toBe(m.growW);
+        await shot(page, theme === 'light' ? 'wide-fit-1900.png' : 'wide-fit-1900-dark.png');
+      } finally {
+        await close();
+      }
+    }, 60_000);
+  }
+
+  it('a narrow window still scrolls sideways, and a normal email keeps its column in both', async (ctx) => {
     if (!browser) return ctx.skip();
-    const { page, close } = await open('Daily Confirmation', 'light');
+    const narrow = await open('Daily Confirmation', 'light', 800, 1400);
     try {
-      await page.addStyleTag({ content: '.rin{max-width:none!important}' });
-      await page.setViewportSize({ width: 2600, height: 800 });
-      await page.waitForTimeout(1000);
-      const m = await page.evaluate(() => {
-        const f = document.querySelector<HTMLIFrameElement>('.mbody iframe')!;
-        const w = f.parentElement!;
-        return {
-          fw: f.style.width,
-          sw: w.scrollWidth,
-          cw: w.clientWidth,
-          wide: w.classList.contains('wide'),
-          barHidden: document.querySelector<HTMLElement>('.mbar')!.hidden,
-        };
-      });
-      expect(m.fw).toBe('');
-      expect(m.sw).toBe(m.cw);
-      expect(m.wide).toBe(false);
-      expect(m.barHidden).toBe(true);
-      // And back to narrow: it scrolls again.
+      const m = await state(narrow.page);
+      expect(m.grown).toBe('');
+      expect(m.wrapClass).toBe('mscroll wide');
+      expect(m.barHidden).toBe(false);
+      expect(m.fade).toBe('1');
+      expect(m.growW).toBeLessThanOrEqual(m.rinW);
+      await shot(narrow.page, 'wide-narrow.png');
+    } finally {
+      await narrow.close();
+    }
+    for (const width of [1400, 1900]) {
+      const { page, close } = await open('5 small habits', 'light', 800, width);
+      try {
+        const m = await page.evaluate(() => ({
+          rin: document.querySelector('.rin')!.getBoundingClientRect().width,
+          grow: document.querySelector<HTMLElement>('.mgrow')!.getBoundingClientRect().width,
+          grown: document.querySelector<HTMLElement>('.mgrow')!.dataset.grown ?? '',
+          style: document.querySelector<HTMLElement>('.mgrow')!.getAttribute('style') ?? '',
+        }));
+        expect(m.grown).toBe('');
+        expect(m.style).toBe('');
+        expect(m.grow).toBe(m.rin);
+        if (width === 1900) expect(m.rin).toBe(760);
+      } finally {
+        await close();
+      }
+    }
+  }, 90_000);
+
+  it('follows the window size: grows when it gets wider, scrolls again when narrower', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const { page, close } = await open('Daily Confirmation', 'light', 800, 1400);
+    try {
+      expect((await state(page)).wrapClass).toBe('mscroll wide');
+      await page.setViewportSize({ width: 1900, height: 800 });
+      await page.waitForTimeout(900);
+      const wide = await state(page);
+      expect(wide.wrapClass).toBe('mscroll');
+      expect(wide.grown).toBe('1');
       await page.setViewportSize({ width: 1400, height: 800 });
-      await page.addStyleTag({ content: '.rin{max-width:760px!important}' });
-      await page.waitForTimeout(1000);
-      expect(
-        await page.evaluate(() => document.querySelector('.mscroll')!.classList.contains('wide')),
-      ).toBe(true);
+      await page.waitForTimeout(900);
+      const back = await state(page);
+      expect(back.wrapClass).toBe('mscroll wide');
+      expect(back.grown).toBe('');
+      expect(back.growW).toBe(back.rinW);
+      // In between: it never goes past the right edge of the pane.
+      await page.setViewportSize({ width: 1600, height: 800 });
+      await page.waitForTimeout(900);
+      const mid = await state(page);
+      expect(mid.growL + mid.growW).toBeLessThanOrEqual(mid.rbodyR);
+    } finally {
+      await close();
+    }
+  }, 60_000);
+
+  it('a conversation card with a wide message grows; the other cards keep their width', async (ctx) => {
+    if (!browser) return ctx.skip();
+    const { page, close } = await open('Weekend plans', 'light', 800, 1900, '&widecard=1');
+    try {
+      await page.waitForSelector('.ccard.open .mbody iframe');
+      await page.waitForTimeout(1200);
+      const m = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll<HTMLElement>('.ccard')].map((c) => ({
+          w: c.getBoundingClientRect().width,
+          left: c.getBoundingClientRect().left,
+          grown: c.dataset.grown ?? '',
+        }));
+        const wrap = document.querySelector<HTMLElement>('.ccard.open .mscroll')!;
+        return { cards, wrapClass: wrap.className, sw: wrap.scrollWidth, cw: wrap.clientWidth };
+      });
+      const grown = m.cards.filter((c) => c.grown === '1');
+      expect(grown.length).toBe(1);
+      expect(grown[0]!.w).toBeGreaterThan(760);
+      const others = m.cards.filter((c) => c.grown !== '1');
+      expect(others.length).toBeGreaterThan(0);
+      for (const c of others) expect(c.w).toBeLessThanOrEqual(760);
+      expect(m.wrapClass).toBe('mscroll');
+      expect(m.sw).toBeLessThanOrEqual(m.cw);
+      await shot(page, 'wide-card-1900.png');
     } finally {
       await close();
     }

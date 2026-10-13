@@ -1000,12 +1000,44 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
         // Right-edge hint: more content to the right.
         (wrap.parentElement as HTMLElement).dataset.more = wide && wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1 ? '1' : '';
       };
+      // A message wider than the readable column grows out of it, up to the free width of the pane (or window).
+      // The box that grows is the conversation card, or the wrapper around a single message's body.
+      const growBox = (frame.closest('.ccard') ?? frame.closest('.mgrow')) as HTMLElement | null;
+      const growRoot = frame.closest('.rbody') as HTMLElement | null;
+      const growTo = (need: number) => {
+        if (!growBox || !growRoot || !wrap) return;
+        const cs = getComputedStyle(growRoot);
+        const rb = growRoot.getBoundingClientRect();
+        const padL = parseFloat(cs.paddingLeft) || 0;
+        const availW = growRoot.clientWidth - padL - (parseFloat(cs.paddingRight) || 0);
+        const boxRect = growBox.getBoundingClientRect();
+        const chrome = boxRect.width - wrap.clientWidth; // card border and padding around the frame
+        const want = Math.min(availW, Math.ceil(need + chrome));
+        if (want <= boxRect.width + 1) return;
+        const minLeft = rb.left + growRoot.clientLeft + padL;
+        // Same left edge as the header; it only moves left when the right side has no room.
+        const left = Math.max(minLeft, Math.min(boxRect.left, minLeft + availW - want));
+        growBox.style.width = `${want}px`;
+        growBox.style.marginLeft = `${Math.round(left - boxRect.left)}px`;
+      };
       const measure = () => {
-        // Measure at the pane width first, so a pane that gets wider shrinks the frame again.
+        // Judge the message at the readable column width every time (the grown size must not feed the decision,
+        // or it would flip back and forth), so a pane that gets wider or narrower is measured fresh.
+        const keepLeft = wrap?.scrollLeft ?? 0;
+        if (growBox && growBox.style.width) {
+          growBox.style.width = '';
+          growBox.style.marginLeft = '';
+        }
         if (frame.style.width) frame.style.width = '';
         frame.style.height = '0px';
         const sw = Math.max(docEl.scrollWidth, doc.body?.scrollWidth ?? 0);
-        if (sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
+        if (sw > docEl.clientWidth + 1) {
+          growTo(sw);
+          // Still wider than the free width: the wrapper scrolls it sideways.
+          if (wrap ? sw > wrap.clientWidth + 1 : sw > docEl.clientWidth + 1) frame.style.width = `${Math.ceil(sw)}px`;
+        }
+        if (growBox) growBox.dataset.grown = growBox.style.width ? '1' : '';
+        if (wrap && keepLeft) wrap.scrollLeft = keepLeft;
         const h = Math.max(docEl.scrollHeight, doc.body?.scrollHeight ?? 0);
         frame.style.height = `${Math.max(MIN_FRAME_HEIGHT, Math.ceil(h))}px`;
         syncBar();
@@ -1031,6 +1063,8 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
       if (doc.body) ro.observe(doc.body);
       // The pane width changes the wrapper, not the (fixed width) frame: measure again then.
       if (wrap) ro.observe(wrap);
+      // The free width of the pane (window resize, sidebar, splitter) decides how far a wide message may grow.
+      if (growRoot) ro.observe(growRoot);
       // Images change the height when they finish loading (load/error do not bubble: use capture).
       doc.addEventListener('load', measure, true);
       doc.addEventListener('error', measure, true);
@@ -1178,7 +1212,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
     </div>
   );
   return (
-    <>
+    <div className="mgrow">
       {plan.card ? <div className="mcard">{iframe}</div> : iframe}
       <div className="mbar" ref={barRef} hidden aria-hidden="true" tabIndex={-1}>
         <div ref={barInnerRef} />
@@ -1203,7 +1237,7 @@ function HtmlFrame({ html, plan, onReject }: { html: string; plan: RenderPlan; o
           </div>
         </Dialog>
       ) : null}
-    </>
+    </div>
   );
 }
 

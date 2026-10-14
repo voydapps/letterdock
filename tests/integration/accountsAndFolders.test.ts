@@ -77,6 +77,58 @@ describe('add account', () => {
   });
 });
 
+describe('sign in again after a rejected password', () => {
+  const statesAfter = (accountId: string, from: number) =>
+    h.eventsOfType('account:status').slice(from).filter((e) => e.status.accountId === accountId).map((e) => e.status.state);
+
+  async function breakPassword() {
+    const acc = await h.addAccount();
+    await waitFor('online', () => ['online', 'syncing'].includes(status(acc.id).state));
+    h.secrets.set(acc.id, 'changed-elsewhere');
+    server.dropConnections();
+    await waitFor('auth_failed', () => status(acc.id).state === 'auth_failed', 15_000);
+    return acc;
+  }
+
+  it('a new password reconnects at once and clears the sign-in state', async () => {
+    const acc = await breakPassword();
+    expect(h.eventsOfType('account:authRequired').length).toBeGreaterThan(0);
+    const from = h.eventsOfType('account:status').length;
+    const t0 = Date.now();
+    await h.engine.handle('accounts.updateCredentials', { accountId: acc.id, password: 'testpass' });
+    await waitFor('online again', () => ['online', 'syncing'].includes(status(acc.id).state), 5_000);
+    // No waiting for a retry timer: connecting, then online.
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    const seen = statesAfter(acc.id, from);
+    const after = seen.slice(seen.indexOf('connecting')); // (a status refresh may still repeat the old state)
+    expect(after[0]).toBe('connecting');
+    expect(after).toContain('online');
+    expect(after).not.toContain('retrying');
+    expect(after).not.toContain('auth_failed');
+    expect(status(acc.id).error).toBeNull();
+  });
+
+  it('a wrong password again is refused with an error and the account stays in sign-in-again', async () => {
+    const acc = await breakPassword();
+    const before = h.secrets.get(acc.id);
+    await expect(
+      h.engine.handle('accounts.updateCredentials', { accountId: acc.id, password: 'still-wrong' }),
+    ).rejects.toMatchObject({ appError: { code: 'AUTH_FAILED' } });
+    expect(status(acc.id).state).toBe('auth_failed');
+    expect(h.secrets.get(acc.id)).toBe(before);
+  });
+
+  it('saving while offline shows offline, then connects when the network is back', async () => {
+    const acc = await breakPassword();
+    await h.engine.sessions.setOnline(false);
+    await h.engine.handle('accounts.updateCredentials', { accountId: acc.id, password: 'testpass' });
+    expect(status(acc.id).state).toBe('offline');
+    await h.engine.sessions.setOnline(true);
+    await waitFor('online again', () => ['online', 'syncing'].includes(status(acc.id).state), 10_000);
+    expect(status(acc.id).error).toBeNull();
+  });
+});
+
 describe('discover then add (known-provider style config)', () => {
   it('uses the discovered username, not a raw placeholder, and logs in', async () => {
     const cfg = (await h.engine.handle('accounts.discover', { email: 'me@gmail.com' })) as {

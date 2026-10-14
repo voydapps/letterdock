@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.15 - 2026-10-14
+### Fixed
+- After you enter a new password for an account, Letterdock connects again right away and the 'sign in again' message goes away.
+
 ## 0.6.14 - 2026-10-13
 ### Changed
 - Wide emails now use all the free width of the reading pane, so a whole table is shown when it fits. You only scroll sideways when the window is too narrow.

@@ -65,6 +65,10 @@ export class AccountSession {
   private connectGeneration = 0;
   /** OAuth: the server refused our token once already (we then asked for a fresh one). */
   private oauthRetried = false;
+  /** Password: the server said "wrong password" once already; try once more before asking the user (Gmail sometimes answers with a passing error). */
+  private authRetried = false;
+  /** The account is waiting for the user to sign in again; the next good connection is logged. */
+  private reauthPending = false;
   private forceTokenRefresh = false;
   private backfillRunning = false;
   private backfilled = new Map<FolderId, number>();
@@ -116,6 +120,7 @@ export class AccountSession {
     this.stopped = false;
     this.attempt = 0;
     this.oauthRetried = false;
+    this.authRetried = false;
     this.forceTokenRefresh = false;
     this.backfilled.clear();
     this.pool = new WorkPool(
@@ -201,6 +206,11 @@ export class AccountSession {
     if (this.stopped || gen !== this.connectGeneration) return;
     this.attempt = 0;
     this.oauthRetried = false;
+    this.authRetried = false;
+    if (this.reauthPending) {
+      this.reauthPending = false;
+      this.ctx.log.info({ accountId: this.account.id }, 'signed in again');
+    }
     this.setState('online');
     this.startTimers();
     void this.afterOnline();
@@ -267,6 +277,13 @@ export class AccountSession {
         );
       }
     }
+    if (err.code === 'AUTH_FAILED' && !this.authRetried) {
+      // Gmail answers a good password with a passing "Lookup failed" now and then. Try once more
+      // after a short wait; only a second refusal in a row asks the user to sign in again.
+      this.authRetried = true;
+      transient = true;
+      err = { ...err, code: 'HOST_UNREACHABLE', retryable: true };
+    }
     this.ctx.log.warn(
       { accountId: this.account.id, code: err.code, details: err.details },
       'connection failure',
@@ -283,6 +300,7 @@ export class AccountSession {
       }
     }
     this.clearTimers();
+    if (err.code === 'AUTH_FAILED' || err.code === 'OAUTH_REAUTH_REQUIRED') this.reauthPending = true;
     if (err.code === 'AUTH_FAILED') {
       this.setState('auth_failed', err);
       this.ctx.hub.emit({
@@ -313,14 +331,17 @@ export class AccountSession {
 
   /** Run a job on the work pool. Auth failures flip the account state. */
   async run<T>(priority: Priority, fn: (c: ImapFlow) => Promise<T>): Promise<T> {
-    if (!this.pool) throw new AppException('HOST_UNREACHABLE', 'This account is not connected.');
+    const pool = this.pool;
+    if (!pool) throw new AppException('HOST_UNREACHABLE', 'This account is not connected.');
     try {
-      return await this.pool.run(priority, fn);
+      return await pool.run(priority, fn);
     } catch (e) {
       const err = mapNetworkError(e);
       if (
         err.code === 'AUTH_FAILED' &&
         !this.stopped &&
+        pool === this.pool && // a job of the old connection must not undo a fresh sign-in
+
         this.state !== 'auth_failed' &&
         this.state !== 'needs_reauth'
       ) {

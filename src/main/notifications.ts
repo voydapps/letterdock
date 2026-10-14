@@ -166,6 +166,11 @@ export class Notifier {
     });
   }
 
+  /** The account connected again: a later sign-in problem may show a toast at once. */
+  authResolved(accountId: string): void {
+    this.lastAuth.delete(accountId);
+  }
+
   /** Engine event `account:authRequired`: at most one toast per account per 24 hours. */
   async authRequired(accountId: string): Promise<void> {
     if (!this.d.settings().notifications.enabled) return;

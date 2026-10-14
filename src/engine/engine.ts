@@ -296,6 +296,7 @@ export function createEngine(opts: EngineOptions): Engine {
       return out;
     },
     'accounts.reconnect': async (r) => {
+      ctx.log.info({ accountId: r.accountId }, 'credentials updated; reconnecting');
       await sessions.restart(r.accountId);
       void scheduled.recheck();
     },

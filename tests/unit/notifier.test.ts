@@ -137,4 +137,14 @@ describe('Notifier', () => {
     await n.authRequired('a1');
     expect(toasts).toHaveLength(3);
   });
+
+  it('after the account signs in again, a new failure shows a toast at once', async () => {
+    const { n, toasts } = setup();
+    await n.authRequired('a1');
+    await n.authRequired('a1');
+    expect(toasts).toHaveLength(1);
+    n.authResolved('a1');
+    await n.authRequired('a1');
+    expect(toasts).toHaveLength(2);
+  });
 });

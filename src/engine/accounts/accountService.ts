@@ -292,6 +292,8 @@ export class AccountService {
     const test = await this.testImap(resolveUsername(a.username, a.email), { kind: 'password', password }, a.imap);
     if (!test.ok) throw new AppException(test.error!.code, test.error!.message, test.error);
     await this.ctx.secrets.set(accountId, { password });
+    this.ctx.log.info({ accountId }, 'credentials updated; reconnecting');
+    // Drops the old connection and the sign-in-again state and connects at once (no waiting timer).
     await this.sessions.restart(accountId);
   }
 

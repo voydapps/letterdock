@@ -129,7 +129,13 @@ export const useApp = create<AppState>((set, get) => ({
 
   async refetchStatuses() {
     try {
-      set({ statuses: byId(await call('accounts.statuses')) });
+      const fresh = byId(await call('accounts.statuses'));
+      set((s) => {
+        const isAuth = (st?: AccountStatus) => st?.state === 'auth_failed' || st?.state === 'needs_reauth';
+        const rest = { ...s.authRequired };
+        for (const id of Object.keys(rest)) if (isAuth(s.statuses[id]) && !isAuth(fresh[id])) delete rest[id];
+        return { statuses: fresh, authRequired: rest };
+      });
     } catch {
       /* ignore */
     }
@@ -151,15 +157,22 @@ export const useApp = create<AppState>((set, get) => ({
   handleEvent(e) {
     switch (e.type) {
       case 'account:status':
-        set((s) => ({ statuses: { ...s.statuses, [e.status.accountId]: e.status } }));
-        if (e.status.state === 'online') {
-          set((s) => {
-            if (!s.authRequired[e.status.accountId]) return s;
+        set((s) => {
+          const was = s.statuses[e.status.accountId]?.state;
+          const wasAuth = was === 'auth_failed' || was === 'needs_reauth';
+          const authNow = e.status.state === 'auth_failed' || e.status.state === 'needs_reauth';
+          const next = { statuses: { ...s.statuses, [e.status.accountId]: e.status } };
+          // The engine owns the state again as soon as it leaves "sign in again": connecting, syncing,
+          // retrying or offline all end the sign-in message, not only "online". A sign-in problem
+          // reported while the connection is fine (sending) stays until the account is online again.
+          if ((wasAuth && !authNow) || e.status.state === 'online') {
+            if (!s.authRequired[e.status.accountId]) return next;
             const rest = { ...s.authRequired };
             delete rest[e.status.accountId];
-            return { authRequired: rest };
-          });
-        }
+            return { ...next, authRequired: rest };
+          }
+          return next;
+        });
         break;
       case 'account:authRequired':
         set((s) => ({ authRequired: { ...s.authRequired, [e.accountId]: e.reason } }));

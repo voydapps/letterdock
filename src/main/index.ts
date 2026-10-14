@@ -321,6 +321,7 @@ async function boot(): Promise<void> {
     if (e.type === 'notify:newMail') notifier.newMail(e.accountId, e.messages, e.archiveAvailable === true);
     else if (e.type === 'snooze:returned') notifier.snoozeReturned(e.accountId, e.messages);
     else if (e.type === 'account:authRequired') void notifier.authRequired(e.accountId);
+    else if (e.type === 'account:status' && e.status.state === 'online') notifier.authResolved(e.status.accountId);
     else if (e.type === 'accounts:changed') accountNames.clear();
     else if (e.type === 'counts:changed') {
       tray.setUnread(e.unifiedInboxUnread);

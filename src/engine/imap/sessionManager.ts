@@ -62,7 +62,7 @@ export class SessionManager {
   /** Apply an account edit: restart the connection if anything connection-related changed. */
   async applyUpdate(a: Account): Promise<void> {
     const s = this.ensure(a);
-    await s.stop(a.enabled ? 'connecting' : 'disabled');
+    await s.stop(!a.enabled ? 'disabled' : this.online ? 'connecting' : 'offline');
     if (a.enabled && this.online) s.start();
   }
 

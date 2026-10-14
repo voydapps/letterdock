@@ -277,7 +277,9 @@ export class AccountSession {
         );
       }
     }
+    let authRetry = false;
     if (err.code === 'AUTH_FAILED' && !this.authRetried) {
+      authRetry = true;
       // Gmail answers a good password with a passing "Lookup failed" now and then. Try once more
       // after a short wait; only a second refusal in a row asks the user to sign in again.
       this.authRetried = true;
@@ -285,7 +287,7 @@ export class AccountSession {
       err = { ...err, code: 'HOST_UNREACHABLE', retryable: true };
     }
     this.ctx.log.warn(
-      { accountId: this.account.id, code: err.code, details: err.details },
+      { accountId: this.account.id, code: err.code, details: err.details, ...(authRetry ? { authRetry: true } : {}) },
       'connection failure',
     );
     this.shared.idleBudget.release(this.account.id);

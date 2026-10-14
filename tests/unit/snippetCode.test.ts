@@ -238,7 +238,7 @@ describe('SnippetRepair and migration 016', () => {
       expect(looksBrokenSnippet(r.snippet)).toBe(false);
       expect(r.snippet).toBe(i % 2 === 0 ? `${REAL} ${i}` : `Fine text ${i}`);
     });
-    expect(db.prepare("SELECT v FROM kv WHERE k='snippet_repair_done'").get()).toEqual({ v: '1' });
+    expect(db.prepare("SELECT v FROM kv WHERE k='snippet_repair_done_v2'").get()).toEqual({ v: '1' });
     // A second start does nothing (done marker).
     db.prepare('UPDATE message SET snippet=? WHERE id=?').run('{"x":1}', added[0]);
     const again = new SnippetRepair(ctx);
@@ -271,7 +271,7 @@ describe('SnippetRepair and migration 016', () => {
         1,
       );
     }
-    db.prepare("INSERT INTO kv (k,v) VALUES ('snippet_repair_id', ?)").run(String(added[0]));
+    db.prepare("INSERT INTO kv (k,v) VALUES ('snippet_repair_id_v2', ?)").run(String(added[0]));
     const repair = new SnippetRepair(ctx);
     repair.start();
     await repair.whenDone();

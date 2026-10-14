@@ -36,7 +36,8 @@ const LATIN1_BY_NAME = new Map<string, string>(
 function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);/gi, (m, body: string) => {
     if (body[0] === '#') {
-      const code = body[1].toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      const code =
+        body[1].toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
       if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return ' ';
       // Dashes and quotes become plain ASCII; other characters stay as they are.
       if (code === 0x2013 || code === 0x2014) return '-';
@@ -50,7 +51,9 @@ function decodeEntities(s: string): string {
 }
 
 // Characters marketing mails use as invisible padding after the preview text.
-const INVISIBLE_CODES = new Set([0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x3164, 0xfeff, 0xffa0]);
+const INVISIBLE_CODES = new Set([
+  0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x3164, 0xfeff, 0xffa0,
+]);
 const INVISIBLE_RANGES: [number, number][] = [
   [0x200b, 0x200f],
   [0x2028, 0x202e],
@@ -81,15 +84,30 @@ export function stripHtml(html: string): string {
     .replace(/<!--[\s\S]*$/, ' ')
     // Downlevel-revealed conditionals and doctype: <![if !mso]>, <![endif]>, <!DOCTYPE ...>
     .replace(/<![^>]*>/g, ' ');
+  // A cut-off peek can start in the middle of a block: "...css... </style><![endif]-->". Drop
+  // everything up to an orphan closing tag (one with no opening tag before it).
+  for (const tag of ['style', 'script', 'head', 'title', 'xml', 'noscript', 'template']) {
+    const close = new RegExp(`</${tag}\\s*>`, 'i').exec(s);
+    if (close && !new RegExp(`<${tag}\\b`, 'i').test(s.slice(0, close.index)))
+      s = s.slice(close.index + close[0].length);
+  }
+  // Left-over comment markers whose other half was cut off.
+  s = s.replace(/-->/g, ' ');
   // Skip the document head when we can see where the body starts.
   const body = /<body\b[^>]*>/i.exec(s);
   if (body) s = s.slice(body.index + body[0].length);
   s = s
     .replace(/<(script|style|head|title|xml|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, ' ')
     // MJML / Mailjet metadata blocks (the visible text is in <mj-text> and friends: keep those).
-    .replace(/<(mj-head|mj-style|mj-attributes|mj-global-style|mj-font|mj-breakpoint|mj-title)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+    .replace(
+      /<(mj-head|mj-style|mj-attributes|mj-global-style|mj-font|mj-breakpoint|mj-title)\b[\s\S]*?<\/\1\s*>/gi,
+      ' ',
+    )
     // An unclosed block (cut-off input) swallows the rest of the text.
-    .replace(/<(script|style|head|title|xml|noscript|template|mj-head|mj-style|mj-attributes|mj-global-style)\b[\s\S]*$/i, ' ')
+    .replace(
+      /<(script|style|head|title|xml|noscript|template|mj-head|mj-style|mj-attributes|mj-global-style)\b[\s\S]*$/i,
+      ' ',
+    )
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, ' ')
     .replace(/<[^>]*>/g, ' ')
     // A tag cut off at the end of the chunk.
@@ -101,7 +119,10 @@ export function stripHtml(html: string): string {
 /** Remove CSS that leaked into text: at-rules ("@font-face {...}") and "selector { prop: value }" blocks. */
 function stripCss(src: string): string {
   return src
-    .replace(/@(?:font-face|media|import|charset|page|keyframes|supports|-[a-z]+-keyframes)\b[^{};]*(?:\{(?:[^{}]|\{[^{}]*\})*\}|;)/gi, ' ')
+    .replace(
+      /@(?:font-face|media|import|charset|page|keyframes|supports|-[a-z]+-keyframes)\b[^{};]*(?:\{(?:[^{}]|\{[^{}]*\})*\}|;)/gi,
+      ' ',
+    )
     .replace(/@(?:font-face|media|keyframes|supports)\b[^{}]*\{[\s\S]*$/gi, ' ')
     .replace(/[^{};]{0,80}\{\s*[a-z-]+\s*:[^{}]*\}/gi, ' ')
     .replace(/[^{};]{0,80}\{\s*[a-z-]+\s*:[^{}]*$/gi, ' ');
@@ -157,9 +178,44 @@ export const BROKEN_SNIPPET_LIKE = [
   '%<!--%',
   '%<style%',
   '%<mj%',
+  // HTML that survived (0.6.16): closing tags, fragments, conditional comments, attributes.
+  '%</%',
+  '%<div %',
+  '%<div>%',
+  '%<table %',
+  '%<table>%',
+  '%<span %',
+  '%<span>%',
+  '%<td %',
+  '%<td>%',
+  '%<tr %',
+  '%<tr>%',
+  '%<img %',
+  '%<img>%',
+  '%<br %',
+  '%<br>%',
+  '%<br/%',
+  '%<body %',
+  '%<body>%',
+  '%<html%',
+  '%<![%',
+  '%-->%',
+  '%class="%',
 ];
+
+const MARKUP_LIKE =
+  /<\/[a-z][a-z0-9:-]*\s*>|<!--|<!\[|<(?:div|table|span|style|script|html|head|body|p|br|img|a|td|tr|th|ul|li|font|center|meta|link|title|mj-[a-z]+)(?=[\s/>]|$)/i;
+
+/** Does this text contain HTML tags or comment markers (so it must be stripped like HTML)? */
+export function looksLikeMarkup(s: string): boolean {
+  return MARKUP_LIKE.test(s);
+}
+
 export function looksBrokenSnippet(s: string): boolean {
-  return /^\s*[[{]|tagName|mj-|@media|font-family:|<!--|<style|<mj|\{"/.test(s);
+  return (
+    /^s*[[{]|tagName|mj-|@media|font-family:|<!--|<style|<mj|{"|-->|class="/.test(s) ||
+    looksLikeMarkup(s)
+  );
 }
 
 /** Remove image placeholders, links and "view in browser" lines from snippet text. */
@@ -190,12 +246,19 @@ export function cleanSnippetText(src: string): string {
  * generated from the HTML). `max` caps the length.
  */
 export function makeSnippet(text: string | null, html: string | null, max = 200): string {
-  // A "plain text" part that is really HTML or MJML source: treat it as HTML.
-  const textIsMarkup = !!text && /^\s*<(?:!doctype|html|head|body|mj-|mjml)/i.test(text);
-  if (textIsMarkup && !html) return cleanSnippetText(stripHtml(text)).slice(0, max);
+  // A "plain text" part that is really HTML (a document, a fragment, a cut-off block): strip it
+  // like HTML. Any text that contains tags is treated this way.
+  const textIsMarkup = !!text && looksLikeMarkup(text);
+  if (textIsMarkup && !html) return finishSnippet(cleanSnippetText(stripHtml(text)), max);
   const fromText = text && text.trim() && !textIsMarkup ? cleanSnippetText(text) : '';
-  if (fromText) return fromText.slice(0, max);
-  return html ? cleanSnippetText(stripHtml(html)).slice(0, max) : '';
+  if (fromText) return finishSnippet(fromText, max);
+  return html ? finishSnippet(cleanSnippetText(stripHtml(html)), max) : '';
+}
+
+/** Last guard: escaped markup (&lt;div&gt;) still there after cleaning is stripped once more. */
+function finishSnippet(s: string, max: number): string {
+  if (s && looksLikeMarkup(s)) s = cleanSnippetText(stripHtml(s));
+  return s.slice(0, max);
 }
 
 /** Text stored in the search index, capped at 100 KB (ARCHITECTURE 5.5). */

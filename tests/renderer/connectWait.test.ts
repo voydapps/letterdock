@@ -14,15 +14,14 @@ const st = (state: AccountStatus['state']): AccountStatus => ({ accountId: 'a1',
 
 describe('connectOutcome', () => {
   it('maps states', () => {
-    const old = st('auth_failed');
-    expect(connectOutcome(undefined, old)).toBe('waiting');
-    expect(connectOutcome(st('connecting'), old)).toBe('waiting');
-    expect(connectOutcome(st('retrying'), old)).toBe('waiting');
-    expect(connectOutcome(st('online'), old)).toBe('online');
-    expect(connectOutcome(st('syncing'), old)).toBe('online');
-    expect(connectOutcome(st('offline'), old)).toBe('offline');
-    expect(connectOutcome(old, old)).toBe('waiting');
-    expect(connectOutcome(st('auth_failed'), old)).toBe('auth_failed');
+    expect(connectOutcome(undefined, false)).toBe('waiting');
+    expect(connectOutcome(st('connecting'), false)).toBe('waiting');
+    expect(connectOutcome(st('retrying'), true)).toBe('waiting');
+    expect(connectOutcome(st('online'), false)).toBe('online');
+    expect(connectOutcome(st('syncing'), false)).toBe('online');
+    expect(connectOutcome(st('offline'), false)).toBe('offline');
+    expect(connectOutcome(st('auth_failed'), false)).toBe('waiting');
+    expect(connectOutcome(st('auth_failed'), true)).toBe('auth_failed');
   });
 });
 
@@ -39,7 +38,7 @@ describe.each(['sign-in', 'settings'] as const)('%s dialog', (which) => {
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     (window as unknown as { api: unknown }).api = {
-      invoke: (ch: string) => Promise.resolve(ch === 'accounts.statuses' ? [st('auth_failed')] : undefined),
+      invoke: (ch: string) => Promise.resolve(ch === 'accounts.statuses' ? [st('auth_failed')] : ch === 'accounts.list' ? [acc] : undefined),
       on: () => () => undefined,
     };
     ({ useApp } = await import('../../src/renderer/src/store/app'));
@@ -90,6 +89,13 @@ describe.each(['sign-in', 'settings'] as const)('%s dialog', (which) => {
     expect(text()).toContain('The server rejected the password');
     expect(text()).not.toContain('Connecting...');
     expect(toasts.join()).not.toMatch(/connected/i);
+  });
+
+  it('a stale refresh with the old sign-in problem does not show an error', async () => {
+    await act(async () => { await useApp.getState().refetchAccounts(); });
+    await act(async () => { await useApp.getState().refetchStatuses(); });
+    expect(text()).toContain('Connecting...');
+    expect(text()).not.toContain('The server rejected the password');
   });
 
   it('gives up waiting after 15 s', async () => {

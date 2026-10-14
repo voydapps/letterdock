@@ -7,12 +7,15 @@ export const CONNECT_WAIT_MS = 15_000;
 
 export type ConnectOutcome = 'waiting' | 'online' | 'offline' | 'auth_failed' | 'timeout';
 
+const isAuth = (st: AccountStatus | undefined) => st?.state === 'auth_failed' || st?.state === 'needs_reauth';
+
 /**
  * What a "new password" dialog should say once the credentials are saved.
- * `baseline` is the status the account had when the save returned. A sign-in problem only counts
- * as "refused again" when it is a newer status than that one (the old one is still on screen).
+ * A sign-in problem only counts as "refused again" after the account moved on (connecting, retrying...)
+ * since the save. Before that, the old "sign in again" status may still be on screen, even if the
+ * store replaced the object, so it says nothing new.
  */
-export function connectOutcome(status: AccountStatus | undefined, baseline: AccountStatus | undefined): ConnectOutcome {
+export function connectOutcome(status: AccountStatus | undefined, progressed: boolean): ConnectOutcome {
   if (!status) return 'waiting';
   switch (status.state) {
     case 'online':
@@ -22,27 +25,34 @@ export function connectOutcome(status: AccountStatus | undefined, baseline: Acco
       return 'offline';
     case 'auth_failed':
     case 'needs_reauth':
-      return status === baseline ? 'waiting' : 'auth_failed';
+      return progressed ? 'auth_failed' : 'waiting';
     default:
       return 'waiting';
   }
 }
 
-/** Follows the account after its credentials were saved. Pass `baseline = null` before the save. */
-export function useConnectOutcome(accountId: AccountId, baseline: AccountStatus | undefined | null): ConnectOutcome {
+/** Follows the account after its credentials were saved. Pass `started = false` before the save. */
+export function useConnectOutcome(accountId: AccountId, started: boolean): ConnectOutcome {
   const status = useApp((s) => s.statuses[accountId]);
   const [timedOut, setTimedOut] = useState(false);
-  const started = baseline !== null;
+  const [progressed, setProgressed] = useState(false);
   useEffect(() => {
     if (!started) return;
     const t = setTimeout(() => setTimedOut(true), CONNECT_WAIT_MS);
+    // A state change after the save (not just a new copy of the old one) means the engine moved on.
+    const unsub = useApp.subscribe((s, prev) => {
+      const now = s.statuses[accountId];
+      if (now && !isAuth(now) && now !== prev.statuses[accountId]) setProgressed(true);
+    });
     return () => {
       clearTimeout(t);
+      unsub();
       setTimedOut(false);
+      setProgressed(false);
     };
-  }, [started]);
+  }, [started, accountId]);
   if (!started) return 'waiting';
-  const out = connectOutcome(status, baseline);
+  const out = connectOutcome(status, progressed);
   return out === 'waiting' && timedOut ? 'timeout' : out;
 }
 

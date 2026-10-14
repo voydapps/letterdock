@@ -434,7 +434,7 @@ export function PasswordDialog({ accountId, onClose }: { accountId: string; onCl
   const [err, setErr] = useState<string | null>(null);
   // After the password is saved: the status the account had then. null = not saved yet.
   const [saved, setSaved] = useState<AccountStatus | undefined | null>(null);
-  const outcome = useConnectOutcome(accountId, saved);
+  const outcome = useConnectOutcome(accountId, saved !== null);
   const waiting = saved !== null && outcome === 'waiting';
   const appPw = useApp((s) => {
     const a = s.accounts.find((x) => x.id === accountId);

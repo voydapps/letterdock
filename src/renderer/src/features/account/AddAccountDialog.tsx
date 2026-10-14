@@ -700,7 +700,7 @@ function ReauthDialog({ accountId, onClose }: { accountId: string; onClose: () =
   const [error, setError] = useState<AppError | null>(null);
   // After the credentials are saved: the status the account had then. null = not saved yet.
   const [saved, setSaved] = useState<AccountStatus | undefined | null>(null);
-  const outcome = useConnectOutcome(accountId, saved);
+  const outcome = useConnectOutcome(accountId, saved !== null);
   const waiting = saved !== null && outcome === 'waiting';
   useEffect(() => {
     if (saved === null || outcome === 'waiting') return;

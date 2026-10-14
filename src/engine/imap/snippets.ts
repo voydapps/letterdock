@@ -5,12 +5,15 @@ import type { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import type { EngineContext } from '../context';
 import type { FolderRow } from '../db/repos/folderRepo';
-import { makeSnippet } from '../messages/bodyUtils';
+import { looksLikeMarkup, makeSnippet } from '../messages/bodyUtils';
 import { pickSnippetPart, type FetchedLike, type SnippetPart } from './parse';
 import { toSequenceSet } from './syncDiff';
 
 const PEEK_BYTES = 3072;
-/** HTML mails often start with a long <head>/<style>: ask again with more bytes when 3 KB showed no text. */
+/**
+ * HTML mails often start with a long <head>/<style>: ask again with more bytes when 3 KB showed no
+ * text. Also for a "plain-text" part that really holds HTML (PayPal sends that).
+ */
 const PEEK_BYTES_HTML = 16384;
 
 /** A cut-off quoted-printable chunk can end inside an "=XX" escape: drop the half escape. */
@@ -58,13 +61,12 @@ async function peekGroup(
   key: string,
   uids: number[],
   own: Own,
-  fallbackSize: boolean,
   idByUid: Map<number, number>,
 ): Promise<{ got: { id: number; uid: number; snippet: string }[]; empty: number[] }> {
   const got: { id: number; uid: number; snippet: string }[] = [];
   const empty: number[] = [];
   let pending = uids;
-  for (const maxLength of fallbackSize ? [PEEK_BYTES, PEEK_BYTES_HTML] : [PEEK_BYTES]) {
+  for (const maxLength of [PEEK_BYTES, PEEK_BYTES_HTML]) {
     if (pending.length === 0) break;
     const rows = (await client.fetchAll(
       toSequenceSet(pending),
@@ -80,7 +82,11 @@ async function peekGroup(
       const truncated = buf.length >= maxLength;
       const snippet = await snippetOf(part, buf, truncated).catch(() => '');
       if (snippet) got.push({ id, uid: r.uid, snippet });
-      else if (truncated && part.type === 'text/html' && maxLength < PEEK_BYTES_HTML)
+      else if (
+        truncated &&
+        maxLength < PEEK_BYTES_HTML &&
+        (part.type === 'text/html' || looksLikeMarkup(buf.subarray(0, 1024).toString('latin1')))
+      )
         again.push(r.uid);
       else empty.push(r.uid);
     }
@@ -115,14 +121,7 @@ export async function fillSnippets(
   for (const [key, g] of byKey) {
     try {
       // Per-message encoding/charset can differ inside one group; use that message's own part.
-      const res = await peekGroup(
-        client,
-        key,
-        g.uids,
-        (uid) => parts.get(uid) ?? g.part,
-        g.part.type === 'text/html',
-        idByUid,
-      );
+      const res = await peekGroup(client, key, g.uids, (uid) => parts.get(uid) ?? g.part, idByUid);
       for (const r of res.got) out.push({ id: r.id, snippet: r.snippet });
       for (const uid of res.empty) {
         const fb = parts.get(uid)?.fallback;
@@ -143,7 +142,6 @@ export async function fillSnippets(
         key,
         g.uids,
         (uid) => parts.get(uid)?.fallback ?? g.part,
-        true,
         idByUid,
       );
       for (const r of res.got) out.push({ id: r.id, snippet: r.snippet });

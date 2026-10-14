@@ -107,7 +107,9 @@ describe('HTML in a plain-text slot or cut off in the middle', () => {
 });
 
 describe('new-mail path (fillSnippets) with the PayPal shape', () => {
+  let asked: number[] = [];
   const run = async (type: 'text/plain' | 'text/html', body: string) => {
+    asked = [];
     const { ctx, db } = makeCtx();
     db.exec(`INSERT INTO account (id,email,display_name,provider,auth_type,imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,username,created_at)
              VALUES ('acc-1','a@x.com','A','generic','password','h',993,'ssl','h',465,'ssl','a',1);
@@ -120,22 +122,36 @@ describe('new-mail path (fillSnippets) with the PayPal shape', () => {
       },
     ] as unknown as FetchedLike[];
     const client = {
-      fetchAll: async (_s: string, q: { bodyParts: { key: string; maxLength: number }[] }) => [
-        {
-          uid: 1,
-          bodyParts: new Map([
-            [q.bodyParts[0].key, Buffer.from(body).subarray(0, q.bodyParts[0].maxLength)],
-          ]),
-        },
-      ],
+      fetchAll: async (_s: string, q: { bodyParts: { key: string; maxLength: number }[] }) => {
+        asked.push(q.bodyParts[0].maxLength);
+        return [
+          {
+            uid: 1,
+            bodyParts: new Map([
+              [q.bodyParts[0].key, Buffer.from(body).subarray(0, q.bodyParts[0].maxLength)],
+            ]),
+          },
+        ];
+      },
     } as unknown as ImapFlow;
     await fillSnippets(ctx, client, fetched, new Map([[1, added[0]]]));
     return (
       db.prepare('SELECT snippet FROM message WHERE id=?').get(added[0]) as { snippet: string }
     ).snippet;
   };
-  it('text/html only (second, bigger peek finds the text)', async () => {
-    expect(looksBrokenSnippet(await run('text/html', DOC))).toBe(false);
+  it('text/html only: second, bigger peek finds the text', async () => {
+    expect(await run('text/html', DOC)).toBe(REAL);
+    expect(asked).toEqual([3072, 16384]);
+  });
+  it('text/plain that holds the HTML gets the bigger peek too', async () => {
+    expect(await run('text/plain', DOC)).toBe(REAL);
+    expect(asked).toEqual([3072, 16384]);
+  });
+  it('plain text that is real text needs one peek only', async () => {
+    expect(await run('text/plain', 'Ciao Maria, il tuo ordine è partito. '.repeat(200))).toMatch(
+      /^Ciao Maria/,
+    );
+    expect(asked).toEqual([3072]);
   });
   it('text/plain that holds cut-off HTML gives no tags', async () => {
     const s = await run('text/plain', `</style><![endif]-->${FRAGMENT}${FILLER}`);

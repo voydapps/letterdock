@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import type { Account, AppSettings, OAuthSettings } from '../../../../shared/ipc';
+import type { Account, AccountStatus, AppSettings, OAuthSettings } from '../../../../shared/ipc';
 import { Icon } from '../../components/Icon';
 import {
   AccountAvatar,
@@ -20,6 +20,7 @@ import { useAccountColor, useThemeState } from '../../lib/hooks';
 import { PALETTE, contrastRatio, isHexColor, resolveAccountColor } from '../../lib/colors';
 import { badgeOf, fileSize, megabytes } from '../../lib/format';
 import { cleanPassword, isAppPasswordProvider } from '../../lib/password';
+import { CONNECT_TEXT, useConnectOutcome } from '../../lib/connectWait';
 import { asAppError, call } from '../../lib/api';
 import { reportActionError, toast, toastError } from '../../store/toasts';
 import { useUpdates } from '../../store/updates';
@@ -427,36 +428,58 @@ function AccountSettings({ accountId }: { accountId: string }) {
   );
 }
 
-function PasswordDialog({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+export function PasswordDialog({ accountId, onClose }: { accountId: string; onClose: () => void }) {
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // After the password is saved: the status the account had then. null = not saved yet.
+  const [saved, setSaved] = useState<AccountStatus | undefined | null>(null);
+  const outcome = useConnectOutcome(accountId, saved);
+  const waiting = saved !== null && outcome === 'waiting';
   const appPw = useApp((s) => {
     const a = s.accounts.find((x) => x.id === accountId);
     return !!a && isAppPasswordProvider(a.imap.host);
   });
+  useEffect(() => {
+    if (saved === null || outcome === 'waiting') return;
+    if (outcome === 'auth_failed') return;
+    toast(outcome === 'online' ? 'Password saved. Connected.' : outcome === 'offline' ? CONNECT_TEXT.offline : CONNECT_TEXT.timeout);
+    onClose();
+  }, [saved, outcome]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Dialog title="Change password" size="sm" onClose={onClose} busy={busy}>
+    <Dialog title="Change password" size="sm" onClose={onClose} busy={busy && !waiting}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
+          setErr(null);
+          setSaved(null);
           try {
             await call('accounts.updateCredentials', { accountId, password: cleanPassword(pw, appPw) });
-            toast('Password saved.');
-            onClose();
+            await useApp.getState().refetchStatuses();
+            setSaved(useApp.getState().statuses[accountId]);
           } catch (ex) {
             setErr(asAppError(ex).message);
+          } finally {
             setBusy(false);
           }
         }}
       >
-        <PasswordField label="New password" value={pw} onChange={(e) => setPw(e.target.value)} error={err} />
+        {waiting ? (
+          <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '8px 0' }}>
+            <i className="spin big" />
+            {CONNECT_TEXT.connecting}
+          </div>
+        ) : (
+          <PasswordField label="New password" value={pw} onChange={(e) => setPw(e.target.value)} error={err ?? (outcome === 'auth_failed' ? CONNECT_TEXT.refused : null)} />
+        )}
         <div className="foot">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={busy} disabled={!pw}>
-            Save
-          </Button>
+          <Button onClick={onClose}>{waiting ? 'Close' : 'Cancel'}</Button>
+          {waiting ? null : (
+            <Button type="submit" variant="primary" loading={busy} disabled={!pw}>
+              Save
+            </Button>
+          )}
         </div>
       </form>
     </Dialog>

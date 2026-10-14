@@ -17,6 +17,8 @@ import { asAppError, call } from '../../lib/api';
 import { domainOf, isValidEmail } from '../../lib/format';
 import { cleanPassword, isAppPasswordProvider } from '../../lib/password';
 import { toast } from '../../store/toasts';
+import { CONNECT_TEXT, useConnectOutcome } from '../../lib/connectWait';
+import type { AccountStatus } from '../../../../shared/ipc';
 
 type Step = 'email' | 'detecting' | 'credentials' | 'oauth' | 'manual' | 'verify';
 
@@ -696,6 +698,17 @@ function ReauthDialog({ accountId, onClose }: { accountId: string; onClose: () =
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  // After the credentials are saved: the status the account had then. null = not saved yet.
+  const [saved, setSaved] = useState<AccountStatus | undefined | null>(null);
+  const outcome = useConnectOutcome(accountId, saved);
+  const waiting = saved !== null && outcome === 'waiting';
+  useEffect(() => {
+    if (saved === null || outcome === 'waiting') return;
+    if (outcome === 'auth_failed') return;
+    const name = account?.displayName ?? 'The account';
+    toast(outcome === 'online' ? `${name} is connected.` : outcome === 'offline' ? CONNECT_TEXT.offline : CONNECT_TEXT.timeout);
+    onClose();
+  }, [saved, outcome]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!account) {
     return (
       <Dialog title="Sign in again" onClose={onClose}>
@@ -705,15 +718,18 @@ function ReauthDialog({ accountId, onClose }: { accountId: string; onClose: () =
     );
   }
   const oauth = account.authType === 'oauth2';
+  const refused: AppError | null = outcome === 'auth_failed' ? { code: 'AUTH_FAILED', message: CONNECT_TEXT.refused, retryable: false } : null;
+  const shownError = error ?? refused;
   const go = async () => {
     setBusy(true);
     setError(null);
+    setSaved(null);
     try {
       if (oauth) await call('oauth.reauthorize', { accountId });
       else await call('accounts.updateCredentials', { accountId, password: cleanPassword(password, isAppPasswordProvider(account.imap.host)) });
-      toast(`${account.displayName} is connected.`);
-      void useApp.getState().refetchStatuses();
-      onClose();
+      // Saved and checked against the server. The connection itself may still be starting.
+      await useApp.getState().refetchStatuses();
+      setSaved(useApp.getState().statuses[accountId]);
     } catch (e) {
       const err = asAppError(e);
       setError(
@@ -728,10 +744,15 @@ function ReauthDialog({ accountId, onClose }: { accountId: string; onClose: () =
     }
   };
   return (
-    <Dialog title={`Sign in again to ${account.displayName}`} onClose={onClose} busy={busy && !oauth}>
+    <Dialog title={`Sign in again to ${account.displayName}`} onClose={onClose} busy={busy && !oauth && !waiting}>
       <form onSubmit={(e) => { e.preventDefault(); void go(); }}>
         <p style={{ marginBottom: 12 }}>{account.email}</p>
-        {oauth && busy ? (
+        {waiting ? (
+          <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '8px 0' }}>
+            <i className="spin big" />
+            {oauth ? 'Signed in. Connecting...' : CONNECT_TEXT.connecting}
+          </div>
+        ) : oauth && busy ? (
           <div role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '8px 0' }}>
             <i className="spin big" />
             Waiting for you to finish in your browser...
@@ -741,19 +762,19 @@ function ReauthDialog({ accountId, onClose }: { accountId: string; onClose: () =
         ) : (
           <PasswordField label="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         )}
-        {error ? (
+        {shownError ? (
           <Banner tone="danger" className="dlg-banner">
-            {error.message}
-            {error.code === 'AUTH_FAILED' && error.details ? (
+            {shownError.message}
+            {shownError.code === 'AUTH_FAILED' && shownError.details ? (
               <div className="hint" style={{ marginTop: 4, opacity: 0.8, fontSize: 12, wordBreak: 'break-word' }}>
-                Server said: {error.details}
+                Server said: {shownError.details}
               </div>
             ) : null}
           </Banner>
         ) : null}
         <div className="foot">
-          <Button onClick={onClose}>{oauth && busy ? 'Close' : 'Cancel'}</Button>
-          {oauth && busy ? null : (
+          <Button onClick={onClose}>{(oauth && busy) || waiting ? 'Close' : 'Cancel'}</Button>
+          {(oauth && busy) || waiting ? null : (
             <Button type="submit" variant="primary" loading={busy} disabled={!oauth && !password}>
               {oauth ? 'Sign in with Microsoft' : 'Sign in'}
             </Button>

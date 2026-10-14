@@ -3,6 +3,7 @@
 ## 0.6.15 - 2026-10-14
 ### Fixed
 - After you enter a new password for an account, Letterdock connects again right away and the 'sign in again' message goes away.
+- The sign-in and change-password windows now say "Connecting..." until the account is really connected, instead of saying "connected" too early.
 
 ## 0.6.14 - 2026-10-13
 ### Changed

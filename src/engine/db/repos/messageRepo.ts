@@ -11,7 +11,7 @@ import type {
 } from '../../../shared/ipc';
 import { AppException } from '../../../shared/errors';
 import type { ContactSource } from '../../contacts/contactService';
-import { BROKEN_SNIPPET_LIKE, ftsText } from '../../messages/bodyUtils';
+import { BROKEN_SNIPPET_LIKE, LEADING_URL_SQL, ftsText } from '../../messages/bodyUtils';
 import { normalizeSubject } from '../../messages/threading';
 import type { Statement } from 'better-sqlite3';
 import type { Db } from '../connection';
@@ -441,7 +441,7 @@ export class MessageRepo {
         .prepare(
           `SELECT m.id AS id, m.folder_id AS folderId, b.text_plain AS text, b.html AS html
              FROM message m JOIN body b ON b.message_pk = m.id
-            WHERE m.id > ? AND m.body_state = 'cached' AND m.snippet <> '' AND (${cond})
+            WHERE m.id > ? AND m.body_state = 'cached' AND m.snippet <> '' AND ((${cond}) OR ${LEADING_URL_SQL})
             ORDER BY m.id LIMIT ?`,
         )
         .all(afterId, ...BROKEN_SNIPPET_LIKE, limit) as {

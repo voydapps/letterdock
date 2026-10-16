@@ -1,4 +1,4 @@
-// (v2 keys: the repair runs once more since 0.6.16, for HTML that survived the first cleaning.)
+// (v3 keys: the repair runs again since 0.6.17, for previews that start with a web address. v2: 0.6.16.)
 // One-time repair of list snippets that show code (Mailjet / MJML JSON, CSS, comments) instead of text.
 // Mail whose body was never downloaded is reset by migration 016 (the snippet backfill fetches it
 // again on the next sync). This job fixes the mail whose body IS stored: it builds the snippet again
@@ -9,8 +9,8 @@ import { makeSnippet } from './bodyUtils';
 
 const CHUNK = 100;
 const PAUSE_MS = 15;
-const KEY = 'snippet_repair_id_v2';
-const DONE = 'snippet_repair_done_v2';
+const KEY = 'snippet_repair_id_v3';
+const DONE = 'snippet_repair_done_v3';
 
 function getKv(ctx: EngineContext, key: string): string | null {
   const r = ctx.db.prepare('SELECT v FROM kv WHERE k = ?').get(key) as { v: string } | undefined;

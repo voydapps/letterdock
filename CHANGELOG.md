@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.17 - 2026-10-16
+### Fixed
+- The preview line no longer starts with a long web address (for example in Amazon emails). It shows the first real sentence instead.
+
 ## 0.6.16 - 2026-10-14
 ### Fixed
 - Some emails (for example from PayPal) still showed HTML code in the preview line. New and existing previews now show the real text.

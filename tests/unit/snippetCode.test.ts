@@ -238,7 +238,7 @@ describe('SnippetRepair and migration 016', () => {
       expect(looksBrokenSnippet(r.snippet)).toBe(false);
       expect(r.snippet).toBe(i % 2 === 0 ? `${REAL} ${i}` : `Fine text ${i}`);
     });
-    expect(db.prepare("SELECT v FROM kv WHERE k='snippet_repair_done_v2'").get()).toEqual({
+    expect(db.prepare("SELECT v FROM kv WHERE k='snippet_repair_done_v3'").get()).toEqual({
       v: '1',
     });
     // A second start does nothing (done marker).
@@ -273,7 +273,7 @@ describe('SnippetRepair and migration 016', () => {
         1,
       );
     }
-    db.prepare("INSERT INTO kv (k,v) VALUES ('snippet_repair_id_v2', ?)").run(String(added[0]));
+    db.prepare("INSERT INTO kv (k,v) VALUES ('snippet_repair_id_v3', ?)").run(String(added[0]));
     const repair = new SnippetRepair(ctx);
     repair.start();
     await repair.whenDone();

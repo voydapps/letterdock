@@ -15,6 +15,7 @@ import accountInUnified from './014_account_in_unified.sql?raw';
 import forwardedFlag from './015_forwarded_flag.sql?raw';
 import resetCodeSnippets from './016_reset_code_snippets.sql?raw';
 import resetHtmlSnippets from './017_reset_html_snippets.sql?raw';
+import resetUrlSnippets from './018_reset_url_snippets.sql?raw';
 
 export interface Migration {
   version: number;
@@ -40,4 +41,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 15, sql: forwardedFlag },
   { version: 16, sql: resetCodeSnippets },
   { version: 17, sql: resetHtmlSnippets },
+  { version: 18, sql: resetUrlSnippets },
 ];

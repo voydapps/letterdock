@@ -218,23 +218,50 @@ export function looksBrokenSnippet(s: string): boolean {
   );
 }
 
-/** Remove image placeholders, links and "view in browser" lines from snippet text. */
+// A web address without "http://": host.tld followed by a path, query or fragment
+// (music.amazon.com?ref_=..., example.com/x?y=1). A bare "amazon.com" does not match.
+const BARE_HOST = String.raw`(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|info|biz|io|app|dev|shop|store|online|site|xyz|[a-z]{2})(?![a-z0-9-])[/?#]\S*`;
+const BARE_URL_ANYWHERE = new RegExp(String.raw`(?<![\w@.\-/])` + BARE_HOST, 'gi');
+const BARE_URL_LEADING = new RegExp('^' + BARE_HOST, 'i');
+const SCHEME_URL_LEADING = /^(?:https?:\/\/|www\.)\S*/i;
+// Separators left in front of the text after a link was removed.
+const LEADING_JUNK = /^(?:[\s|:;,.>*_~=/\\)\]–—•·]|-(?=[\s-]|$))+/;
+
+/** A long or tracking-style bare address: has a query string, or is longer than 40 characters. */
+function isTrackingUrl(u: string): boolean {
+  return /[?=&]/.test(u) || u.length > 40;
+}
+
+/**
+ * Remove image placeholders, web addresses and "view in browser" lines from snippet text.
+ * Addresses at the start are always dropped; a short bare address in a sentence is kept.
+ */
 export function cleanSnippetText(src: string): string {
   let s = stripCss(stripJsonBlobs(src))
     .replace(/\[\s*(?:image|img|inline image|cid)\b[^\]]*\]/gi, ' ')
     .replace(/\[\s*(?:image|img|inline image|cid)\b\S*/gi, ' ')
+    // Markdown-style [text](url): keep the text.
+    .replace(/\[([^\]\n]{0,200})\]\(\s*(?:https?:\/\/|www\.)[^)\s]*\s*\)/gi, ' $1 ')
     // Links in angle brackets or square brackets, and bare URLs.
     .replace(/[<[(]\s*(?:https?:\/\/|www\.)[^\s>\])]*\s*[>\])]?/gi, ' ')
-    .replace(/(?:https?:\/\/|www\.)\S*/gi, ' ');
+    .replace(/(?:https?:\/\/|www\.)\S*/gi, ' ')
+    // Long addresses without "http://" (tracking links) in the middle of the text.
+    .replace(BARE_URL_ANYWHERE, (m) => (isTrackingUrl(m) ? ' ' : m))
+    .replace(/<\s*>|\(\s*\)|\[\s*\]/g, ' ');
   s = stripInvisible(s)
     .replace(/\uFFFD+\s*$/, '')
     .replace(/\s+/g, ' ')
     .trim();
-  // "View in browser" style opening lines, possibly more than one.
+  // "View in browser" style opening lines and addresses at the start, possibly several in a row.
   const lead =
     /^(?:(?:view|read|open)\s+(?:this\s+)?(?:email|message|newsletter|mail|it|online)?\s*(?:in|on)\s+(?:your\s+|a\s+)?(?:web\s+)?browser|having trouble (?:viewing|reading) this (?:email|message)\??(?: view it in your browser)?|(?:email )?not displaying (?:correctly|properly)\??(?: view it in your browser)?)[\s.:|-]*/i;
-  for (let i = 0; i < 3; i++) {
-    const next = s.replace(lead, '').trim();
+  for (let i = 0; i < 8; i++) {
+    const next = s
+      .replace(LEADING_JUNK, '')
+      .replace(lead, '')
+      .replace(SCHEME_URL_LEADING, '')
+      .replace(BARE_URL_LEADING, '')
+      .trim();
     if (next === s) break;
     s = next;
   }
@@ -281,3 +308,16 @@ export function hasRemoteImages(html: string | null): boolean {
 
 export { safeFileName } from '../../shared/fileName';
 export { isExecutableName } from '../../shared/safety';
+
+/**
+ * SQL (SQLite) test for "the stored preview starts with a web address" (column `m.snippet`):
+ * after leading separators, the first word is http(s)://..., www... or host.tld followed by / ? #.
+ * Used by the repair job; the same rule as migration 018.
+ */
+export const LEADING_URL_SQL = (() => {
+  const s = "lower(ltrim(m.snippet, ' <[(|:*>-'))";
+  return (
+    `(${s} LIKE 'http://%' OR ${s} LIKE 'https://%' OR ${s} LIKE 'www.%' OR ` +
+    `substr(${s}, 1, instr(${s} || ' ', ' ') - 1) GLOB '*[a-z0-9].[a-z][a-z]*[/?#]*')`
+  );
+})();

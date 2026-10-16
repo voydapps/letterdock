@@ -220,7 +220,7 @@ export function looksBrokenSnippet(s: string): boolean {
 
 // A web address without "http://": host.tld followed by a path, query or fragment
 // (music.amazon.com?ref_=..., example.com/x?y=1). A bare "amazon.com" does not match.
-const BARE_HOST = String.raw`(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|info|biz|io|app|dev|shop|store|online|site|xyz|[a-z]{2})(?![a-z0-9-])[/?#]\S*`;
+const BARE_HOST = String.raw`(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|edu|gov|info|biz|io|app|dev|shop|store|online|site|xyz|[a-z]{2})(?![a-z0-9-])[/?#][^\s)\]>]*`;
 const BARE_URL_ANYWHERE = new RegExp(String.raw`(?<![\w@.\-/])` + BARE_HOST, 'gi');
 const BARE_URL_LEADING = new RegExp('^' + BARE_HOST, 'i');
 const SCHEME_URL_LEADING = /^(?:https?:\/\/|www\.)\S*/i;

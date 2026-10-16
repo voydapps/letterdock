@@ -36,6 +36,14 @@ describe('web addresses in the preview', () => {
       makeSnippet('Hello, open example.com/very/long/path/without/query/string/here today', null),
     ).toBe('Hello, open today');
   });
+  it('a long address inside brackets leaves no dangling bracket (real shape)', () => {
+    expect(
+      makeSnippet(
+        'La richiesta n.1459321 (servicedesk.namirial.com/hc/requests/1459321) è aperta',
+        null,
+      ),
+    ).toBe('La richiesta n.1459321 è aperta');
+  });
   it('short human mentions stay', () => {
     expect(makeSnippet('Order on amazon.com or visit example.org today', null)).toBe(
       'Order on amazon.com or visit example.org today',

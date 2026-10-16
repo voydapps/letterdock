@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.18 - 2026-10-16
+### Fixed
+- In Unread, an email you open now stays in the list while you read it. It leaves the list when you move to another email.
+
 ## 0.6.17 - 2026-10-16
 ### Fixed
 - The preview line no longer starts with a long web address (for example in Amazon emails). It shows the first real sentence instead.

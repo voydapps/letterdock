@@ -219,10 +219,18 @@ export function MessageList({ className }: { className?: string }) {
       else if (delta === 'last') next = list.length - 1;
       else next = cur < 0 ? (delta > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, cur + delta));
       const target = list[next]!;
+      // Rows that were kept only because they were open leave the list now; rows above the target shift up.
+      const leaving = st.stickyIds.filter((id) => id !== target.id && !(extend && st.selectedIds.includes(id)));
       if (extend) st.rangeTo(target.id);
       else st.selectOnly(target.id);
-      const fi = idToFlat.get(target.id);
-      if (fi !== undefined) virtualizer.scrollToIndex(fi, { align: 'auto' });
+      let fi = idToFlat.get(target.id);
+      if (fi !== undefined) {
+        for (const id of leaving) {
+          const at = idToFlat.get(id);
+          if (at !== undefined && at < fi) fi--;
+        }
+        virtualizer.scrollToIndex(fi, { align: 'auto' });
+      }
     },
     [idToFlat, virtualizer],
   );

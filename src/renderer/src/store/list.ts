@@ -101,6 +101,11 @@ interface ListState {
   anchorId: MessageId | null;
   focusId: MessageId | null;
   selectMode: boolean;
+  /**
+   * Rows of an unread-only list that were read while open. They stay on screen (shown as read) while
+   * they are selected, and leave the list when the selection moves on or the view changes.
+   */
+  stickyIds: MessageId[];
 
   load: (view: View, unreadOnly: boolean, grouped?: boolean) => Promise<void>;
   loadMore: () => Promise<void>;
@@ -206,6 +211,65 @@ function olderFolderIds(scope: ListScope): FolderId[] {
   }
 }
 
+/** True when the list only shows unread mail: Unread view, "Filter: Unread", or a search with is:unread. */
+function isUnreadFiltered(s: Pick<ListState, 'scope' | 'unreadOnly' | 'search'>): boolean {
+  if (s.search) return /(^|\s)is:unread(\s|$)/i.test(s.search.query);
+  return s.unreadOnly || s.scope?.kind === 'unifiedUnread';
+}
+
+/**
+ * Put back the open row of an unread-only list when a reload no longer has it (it was read, so the
+ * server no longer lists it as unread). It goes back right after the row that was above it.
+ * Rows read through a multi-selection are not "open", so they leave at once.
+ */
+function withSticky(
+  cur: Pick<ListState, 'items' | 'pinnedCount' | 'selectedIds' | 'stickyIds' | 'scope' | 'unreadOnly' | 'search'>,
+  items: ListItem[],
+  pinnedCount: number,
+): { items: ListItem[]; pinnedCount: number; stickyIds: MessageId[] } {
+  if (!isUnreadFiltered(cur)) return { items, pinnedCount, stickyIds: [] };
+  const open = cur.selectedIds.length === 1 ? cur.selectedIds[0]! : null;
+  const want = new Set(cur.stickyIds.filter((id) => cur.selectedIds.includes(id)));
+  if (open !== null) want.add(open);
+  const have = new Set(items.map((m) => m.id));
+  const out = items.slice();
+  let pinned = pinnedCount;
+  const kept: MessageId[] = [];
+  cur.items.forEach((row, idx) => {
+    if (!want.has(row.id)) return;
+    if (have.has(row.id)) return;
+    let at = 0;
+    for (let j = idx - 1; j >= 0; j--) {
+      const k = out.findIndex((m) => m.id === cur.items[j]!.id);
+      if (k >= 0) {
+        at = k + 1;
+        break;
+      }
+    }
+    const asRead: ListItem = { ...row, seen: true, ...(row.conv ? { conv: { ...row.conv, unreadCount: 0 } } : {}) };
+    out.splice(at, 0, asRead);
+    have.add(row.id);
+    if (idx < cur.pinnedCount && at <= pinned) pinned++;
+    kept.push(row.id);
+  });
+  return { items: out, pinnedCount: pinned, stickyIds: kept };
+}
+
+/** Drop sticky rows that are no longer selected (the user moved on). */
+function dropSticky(s: ListState): Partial<ListState> {
+  if (s.stickyIds.length === 0) return {};
+  const keep = new Set(s.stickyIds.filter((id) => s.selectedIds.includes(id)));
+  const gone = new Set(s.stickyIds.filter((id) => !keep.has(id)));
+  if (gone.size === 0) return {};
+  return {
+    items: s.items.filter((m) => !gone.has(m.id)),
+    pinnedCount: s.items.slice(0, s.pinnedCount).filter((m) => !gone.has(m.id)).length,
+    stickyIds: [...keep],
+    focusId: s.focusId !== null && gone.has(s.focusId) ? null : s.focusId,
+    anchorId: s.anchorId !== null && gone.has(s.anchorId) ? null : s.anchorId,
+  };
+}
+
 export const useList = create<ListState>((set, get) => ({
   key: '',
   scope: null,
@@ -232,6 +296,7 @@ export const useList = create<ListState>((set, get) => ({
   anchorId: null,
   focusId: null,
   selectMode: false,
+  stickyIds: [],
 
   async load(view, unreadOnly, groupedArg) {
     if (view.kind === 'search') return loadSearch(view.query, view.accountId, set, get);
@@ -273,6 +338,7 @@ export const useList = create<ListState>((set, get) => ({
             anchorId: null,
             focusId: null,
             selectMode: false,
+            stickyIds: [],
           }),
     });
     try {
@@ -283,9 +349,9 @@ export const useList = create<ListState>((set, get) => ({
       const carried = carryIds.length
         ? all.find((m) => (m.conv ? m.conv.messageIds.some((i) => carryIds.includes(i)) : carryIds.includes(m.id)))
         : undefined;
+      const merged = sameScope ? withSticky(get(), all, pinned.length) : { items: all, pinnedCount: pinned.length, stickyIds: [] };
       set({
-        items: all,
-        pinnedCount: pinned.length,
+        ...merged,
         nextCursor: res.nextCursor,
         canLoadOlder: res.canLoadOlderFromServer,
         total: res.total,
@@ -371,13 +437,17 @@ export const useList = create<ListState>((set, get) => ({
       try {
         const res = await runSearch(s.search.query, s.search.accountId);
         if (mine !== seq) return;
-        const ids = new Set(res.items.map((m) => m.id));
-        set((cur) => ({
-          items: orderSearch(res.items, cur.searchSort),
-          search: cur.search && { ...cur.search, parsedFilters: res.parsedFilters, totalApprox: res.totalApprox },
-          selectedIds: cur.selectedIds.filter((id) => ids.has(id)),
-          focusId: cur.focusId !== null && ids.has(cur.focusId) ? cur.focusId : null,
-        }));
+        set((cur) => {
+          const m = withSticky(cur, orderSearch(res.items, cur.searchSort), 0);
+          const ids = new Set(m.items.map((x) => x.id));
+          return {
+            items: m.items,
+            stickyIds: m.stickyIds,
+            search: cur.search && { ...cur.search, parsedFilters: res.parsedFilters, totalApprox: res.totalApprox },
+            selectedIds: cur.selectedIds.filter((id) => ids.has(id)),
+            focusId: cur.focusId !== null && ids.has(cur.focusId) ? cur.focusId : null,
+          };
+        });
       } catch {
         /* the next event retries */
       }
@@ -432,13 +502,16 @@ export const useList = create<ListState>((set, get) => ({
           const thread = old?.conv?.threadId;
           return thread ? (items.find((m) => m.conv?.threadId === thread)?.id ?? null) : null;
         };
+        const m = withSticky(cur, items, pinned.length);
+        items = m.items;
         const selectedIds = [...new Set(cur.selectedIds.map(keep).filter((x): x is number => x !== null))];
         return {
           items,
-          pinnedCount: pinned.length,
+          pinnedCount: m.pinnedCount,
+          stickyIds: m.stickyIds,
           nextCursor: fin.nextCursor,
           canLoadOlder: fin.canLoadOlderFromServer,
-          total: fin.total ?? cur.total,
+          total: fin.total !== null ? fin.total + m.stickyIds.length : cur.total,
           refreshing: false,
           error: null,
           selectedIds,
@@ -464,6 +537,7 @@ export const useList = create<ListState>((set, get) => ({
       selectedIds: cur.selectedIds.filter((id) => !gone.has(id)),
       focusId: cur.focusId !== null && gone.has(cur.focusId) ? null : cur.focusId,
       anchorId: cur.anchorId !== null && gone.has(cur.anchorId) ? null : cur.anchorId,
+      stickyIds: cur.stickyIds.filter((id) => !gone.has(id)),
     }));
   },
 
@@ -491,7 +565,10 @@ export const useList = create<ListState>((set, get) => ({
     }
   },
 
-  selectOnly: (id) => set({ selectedIds: [id], anchorId: id, focusId: id }),
+  selectOnly: (id) => {
+    set({ selectedIds: [id], anchorId: id, focusId: id });
+    set(dropSticky(get()));
+  },
   toggle: (id) => {
     const cur = get().selectedIds;
     set({
@@ -499,6 +576,7 @@ export const useList = create<ListState>((set, get) => ({
       anchorId: id,
       focusId: id,
     });
+    set(dropSticky(get()));
   },
   rangeTo: (id) => {
     const { items, anchorId } = get();
@@ -507,10 +585,20 @@ export const useList = create<ListState>((set, get) => ({
     if (a < 0 || b < 0) return get().selectOnly(id);
     const [lo, hi] = a < b ? [a, b] : [b, a];
     set({ selectedIds: items.slice(lo, hi + 1).map((m) => m.id), focusId: id });
+    set(dropSticky(get()));
   },
-  selectAll: () => set({ selectedIds: get().items.map((m) => m.id) }),
-  clearSelection: () => set({ selectedIds: [], anchorId: null }),
-  setSelectMode: (on) => set({ selectMode: on, ...(on ? {} : { selectedIds: [] }) }),
+  selectAll: () => {
+    set({ selectedIds: get().items.map((m) => m.id) });
+    set(dropSticky(get()));
+  },
+  clearSelection: () => {
+    set({ selectedIds: [], anchorId: null });
+    set(dropSticky(get()));
+  },
+  setSelectMode: (on) => {
+    set({ selectMode: on, ...(on ? {} : { selectedIds: [] }) });
+    set(dropSticky(get()));
+  },
   setFocus: (id) => set({ focusId: id }),
 }));
 
@@ -544,7 +632,7 @@ async function loadSnoozed(
     nextCursor: null,
     canLoadOlder: false,
     endReached: true,
-    ...(same ? {} : { items: [], total: null, selectedIds: [], anchorId: null, focusId: null, selectMode: false }),
+    ...(same ? {} : { items: [], total: null, selectedIds: [], anchorId: null, focusId: null, selectMode: false, stickyIds: [] }),
   });
   try {
     const items = await readSnoozed(accountId);
@@ -586,28 +674,33 @@ async function loadSearch(
           anchorId: null,
           focusId: null,
           selectMode: false,
+          stickyIds: [],
           search: { query, accountId, parsedFilters: [], totalApprox: 0, coverage: { messagesIndexed: 0, bodiesIndexed: 0 }, serverAdded: null },
         }),
   });
   try {
     const res = await runSearch(query, accountId);
     if (mine !== seq) return;
-    set((cur) => ({
-      items: orderSearch(res.items, cur.searchSort),
-      loading: false,
-      nextCursor: null,
-      canLoadOlder: false,
-      endReached: true,
-      total: res.items.length,
-      search: {
-        query,
-        accountId,
-        parsedFilters: res.parsedFilters,
-        totalApprox: res.totalApprox,
-        coverage: res.coverage,
-        serverAdded: same ? (cur.search?.serverAdded ?? null) : null,
-      },
-    }));
+    set((cur) => {
+      const ordered = orderSearch(res.items, cur.searchSort);
+      const merged = same ? withSticky(cur, ordered, 0) : { items: ordered };
+      return {
+        ...merged,
+        loading: false,
+        nextCursor: null,
+        canLoadOlder: false,
+        endReached: true,
+        total: res.items.length,
+        search: {
+          query,
+          accountId,
+          parsedFilters: res.parsedFilters,
+          totalApprox: res.totalApprox,
+          coverage: res.coverage,
+          serverAdded: same ? (cur.search?.serverAdded ?? null) : null,
+        },
+      };
+    });
   } catch (e) {
     if (mine !== seq) return;
     set({ loading: false, error: asAppError(e) });

@@ -84,6 +84,7 @@ export class AppTray {
       this.tray = tray;
       // On a display scale change Windows may want another frame: set the image again so Electron asks for
       // GetHICON(SM_CXSMICON) anew (it is cached per size, so this is cheap).
+      if (this.onMetrics) screen.removeListener('display-metrics-changed', this.onMetrics);
       this.onMetrics = () => this.reapply();
       screen.on('display-metrics-changed', this.onMetrics);
       this.refreshImage();

@@ -1,4 +1,5 @@
-// Builds build/icon.ico and build/icon.png from the SVG masters (DESIGN-SPEC 1.8).
+// Builds build/icon.ico and build/icon.png from the SVG master (DESIGN-SPEC 1.8). build/icon-small.svg is kept as the
+// 256-unit reference of the flat small design; the frames up to 28 px come from gridSvg() in scripts/lib/tray-icon.mjs.
 // Every frame is drawn from vector at its own size (pixel-snapped flat design up to 28 px, the master above),
 // never resampled from the 256 frame. The tray dot icon is built the same way (scripts/lib/tray-icon.mjs).
 // Run with: npm run icons
@@ -10,12 +11,10 @@ import { APP_SIZES, APPICO_SIZES, TRAY_SIZES, buildIco, renderTrayPng } from './
 
 const buildDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
 const master = readFileSync(join(buildDir, 'icon.svg'));
-const small = readFileSync(join(buildDir, 'icon-small.svg'));
 const SIZES = APP_SIZES;
 
 function render(size) {
-  const svg = size <= 24 ? small : master;
-  return new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng();
+  return new Resvg(master, { fitTo: { mode: 'width', value: size } }).render().asPng();
 }
 
 const ico = await buildIco({ sizes: SIZES });

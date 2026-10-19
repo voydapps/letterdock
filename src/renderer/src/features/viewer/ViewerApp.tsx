@@ -18,7 +18,7 @@ import { printOpenMessage } from '../../lib/print';
 import { matchShortcut, isTypingTarget } from '../../lib/shortcuts';
 import { activePreset } from '../../store/app';
 import { useUi } from '../../store/ui';
-import appIcon from '../../../../../build/icon-small.svg';
+import { AppLogo } from '../../components/AppLogo';
 
 const UNDO_PANEL_MS = 6000;
 
@@ -283,7 +283,7 @@ export function ViewerApp({ messageId }: { messageId: number | null }) {
   return (
     <div className="app vwin">
       <header className="titlebar ctitle vtitle" role="banner">
-        <img className="appico" src={appIcon} alt="" aria-hidden="true" draggable={false} />
+        <AppLogo />
         <b>{subject ?? 'Message'}</b>
       </header>
       <main className="reading" aria-label="Message" id="pane-reading" style={{ containerType: 'inline-size' }}>

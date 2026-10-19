@@ -18,7 +18,7 @@ import { composeFromEml } from '../../lib/actions';
 import { printOpenMessage } from '../../lib/print';
 import { matchShortcut, isTypingTarget } from '../../lib/shortcuts';
 import { toastError } from '../../store/toasts';
-import appIcon from '../../../../../build/icon-small.svg';
+import { AppLogo } from '../../components/AppLogo';
 
 type Load = { status: 'loading' } | { status: 'error'; error: AppError } | { status: 'ready'; message: EmlMessage };
 
@@ -216,7 +216,7 @@ export function EmlViewerApp({ token }: { token: string | null }) {
   return (
     <div className="app vwin">
       <header className="titlebar ctitle vtitle" role="banner">
-        <img className="appico" src={appIcon} alt="" aria-hidden="true" draggable={false} />
+        <AppLogo />
         <b>{subject ?? 'Message'}</b>
       </header>
       <main className="reading" aria-label="Message" id="pane-reading" style={{ containerType: 'inline-size' }}>
@@ -246,7 +246,7 @@ export function EmlErrorApp({ items }: { items: EmlErrorItem[] }) {
   return (
     <div className="app vwin">
       <header className="titlebar ctitle vtitle" role="banner">
-        <img className="appico" src={appIcon} alt="" aria-hidden="true" draggable={false} />
+        <AppLogo />
         <b>Letterdock</b>
       </header>
       <main className="reading" aria-label="Message file error">

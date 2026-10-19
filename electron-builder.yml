@@ -45,6 +45,7 @@ electronLanguages:
   - en-US
 extraResources:
   - from: build/icon.ico
+  - from: build/tray-dot.ico
   - from: build/icon.png
   - from: build/badges
     to: badges

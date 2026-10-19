@@ -130,7 +130,7 @@ async function boot(): Promise<void> {
   const send = (e: AppEvent) => broadcast(windows, e);
 
   // ---- tray icon (always there; close-to-tray and start-hidden depend on it) ----
-  const tray = new AppTray();
+  const tray = new AppTray((m) => log.warn(m));
   // The unread number is the taskbar overlay of every window (3.15), set through ITaskbarList3 at the real pixel
   // size of the screen; the main window title carries the count. LETTERDOCK_DEBUG_UNREAD=<n> forces the count in a dev run.
   const stripsDir = badgeStripsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });

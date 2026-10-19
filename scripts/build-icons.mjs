@@ -1,23 +1,24 @@
 // Builds build/icon.ico and build/icon.png from the SVG masters (DESIGN-SPEC 1.8).
-// Sizes up to 24px use the flat small design; 32px and up use the master.
+// Every frame is drawn from vector at its own size (pixel-snapped flat design up to 28 px, the master above),
+// never resampled from the 256 frame. The tray dot icon is built the same way (scripts/lib/tray-icon.mjs).
 // Run with: npm run icons
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
-import pngToIco from 'png-to-ico';
+import { APP_SIZES, APPICO_SIZES, TRAY_SIZES, buildIco, renderTrayPng } from './lib/tray-icon.mjs';
 
 const buildDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
 const master = readFileSync(join(buildDir, 'icon.svg'));
 const small = readFileSync(join(buildDir, 'icon-small.svg'));
-const SIZES = [16, 20, 24, 32, 40, 48, 64, 256];
+const SIZES = APP_SIZES;
 
 function render(size) {
   const svg = size <= 24 ? small : master;
   return new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng();
 }
 
-const ico = await pngToIco(SIZES.map(render));
+const ico = await buildIco({ sizes: SIZES });
 writeFileSync(join(buildDir, 'icon.ico'), ico);
 writeFileSync(join(buildDir, 'icon.png'), render(512));
 // Renderer favicon (served from src/renderer/public).
@@ -37,3 +38,15 @@ for (const name of TOAST_ICONS) {
   }
 }
 console.log('Wrote build/toast-icons (read, archive, delete; light and dark; 48 px)');
+
+
+// Tray icon with the unread dot (DESIGN-SPEC 3.15): the plain tray icon is build/icon.ico itself.
+writeFileSync(join(buildDir, 'tray-dot.ico'), await buildIco({ dot: true, sizes: TRAY_SIZES }));
+console.log(`Wrote build/tray-dot.ico (${TRAY_SIZES.join(', ')})`);
+
+// Logo in the custom title bars (16 CSS px): one pixel-snapped PNG per display scale (1, 1.25, 1.5, 1.75, 2, 2.5, 3),
+// picked by the browser through srcset. An SVG scaled by the browser would blur at 125% and 150%.
+const appicoDir = join(buildDir, '..', 'src', 'renderer', 'src', 'assets', 'appico');
+mkdirSync(appicoDir, { recursive: true });
+for (const px of APPICO_SIZES) writeFileSync(join(appicoDir, `appico-${px}.png`), renderTrayPng(px));
+console.log(`Wrote src/renderer/src/assets/appico (${APPICO_SIZES.join(', ')} px)`);

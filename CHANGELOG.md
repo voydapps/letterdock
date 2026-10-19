@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.19 - 2026-10-19
+### Fixed
+- Letterdock's icons (next to the clock, in the title bar and in the Start menu and shortcuts) are sharp on screens with scaling above 100%.
+
 ## 0.6.18 - 2026-10-16
 ### Fixed
 - In Unread, an email you open now stays in the list while you read it. It leaves the list when you move to another email.

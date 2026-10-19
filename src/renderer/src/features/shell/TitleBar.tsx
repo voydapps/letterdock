@@ -6,7 +6,7 @@ import { useApp } from '../../store/app';
 import { useUi } from '../../store/ui';
 import { SearchBox } from './SearchBox';
 import { SyncPopover } from './SyncPopover';
-import appIcon from '../../../../../build/icon-small.svg';
+import { AppLogo } from '../../components/AppLogo';
 
 export { syncAll } from './SyncPopover';
 
@@ -43,7 +43,7 @@ export function TitleBar() {
 
   return (
     <header className={`titlebar ${focused ? '' : 'unfocused'}`} role="banner">
-      <img className="appico" src={appIcon} alt="" aria-hidden="true" draggable={false} />
+      <AppLogo />
       {hideBox ? (
         <IconButton
           icon="search"

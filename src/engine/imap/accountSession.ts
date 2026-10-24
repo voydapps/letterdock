@@ -644,8 +644,8 @@ export class AccountSession {
           entry.rerun = false;
           const fresh = this.ctx.folders.row(folder.id);
           if (!fresh) return;
-          const res = await this.run(priority, (c) =>
-            syncFolder(this.ctx, c, fresh, this.account.syncDays),
+          const res = await this.withFolderLock(folder.id, () =>
+            this.run(priority, (c) => syncFolder(this.ctx, c, fresh, this.account.syncDays)),
           );
           this.lastSyncAt = this.ctx.now();
           if (fresh.role === 'inbox') {
@@ -699,23 +699,36 @@ export class AccountSession {
   }
 
   private olderRuns = new Map<FolderId, Promise<LoadOlderRes>>();
+  private folderLocks = new Map<FolderId, Promise<unknown>>();
 
   /**
-   * One "load older" per folder at a time (a second request gets the answer of the running one),
-   * and never while a sync of the same folder runs: the first sync writes the folder cursors last,
-   * so older mail cannot be told apart from new mail before it has finished.
+   * One writer per folder at a time: a folder sync and a "load older" never overlap, in either
+   * direction. Callers queue in order. The lock is always given back (error, disconnect, shutdown).
+   * Duplicate syncs are already merged by `syncFolderRow` and duplicate load-olders by `olderRuns`,
+   * so the queue stays short.
    */
+  private async withFolderLock<T>(folderId: FolderId, fn: () => Promise<T>): Promise<T> {
+    const prev = this.folderLocks.get(folderId) ?? Promise.resolve();
+    let release!: () => void;
+    const mine = new Promise<void>((r) => (release = r));
+    const tail = prev.then(() => mine);
+    this.folderLocks.set(folderId, tail);
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.folderLocks.get(folderId) === tail) this.folderLocks.delete(folderId);
+    }
+  }
+
+  /** One "load older" per folder at a time; a second request gets the answer of the running one. */
   loadOlderFor(folderId: FolderId): Promise<LoadOlderRes> {
     const running = this.olderRuns.get(folderId);
     if (running) return running;
-    const job = (async () => {
-      for (let i = 0; i < 5; i++) {
-        const sync = this.inflight.get(folderId);
-        if (!sync) break;
-        await sync.promise.catch(() => undefined);
-      }
-      return this.run('user', (c) => loadOlder(this.ctx, c, folderId));
-    })();
+    const job = this.withFolderLock(folderId, () =>
+      this.run('user', (c) => loadOlder(this.ctx, c, folderId)),
+    );
     this.olderRuns.set(folderId, job);
     const done = () => {
       if (this.olderRuns.get(folderId) === job) this.olderRuns.delete(folderId);

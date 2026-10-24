@@ -2,7 +2,7 @@
 // Kept in its own file: a worker crash seen in this situation must not take other tests down.
 // The first sync writes the folder cursors last, so "load older" has to wait for it.
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, waitFor, type Harness } from '../fakes/engineHarness';
+import { createHarness, waitFor, waitForInboxCursors, type Harness } from '../fakes/engineHarness';
 import { rawMessage, startFakeImap, type FakeImapServer } from '../fakes/fakeImapServer';
 
 const DAY = 86_400_000;
@@ -79,5 +79,66 @@ describe('loadOlder during the first sync', () => {
     const r = await loadOlder(h!.engine.ctx, null as never, inboxId);
     expect(r).toEqual({ fetched: 0, reachedStart: false });
     expect(h!.engine.ctx.folders.syncState(inboxId)!.historyComplete).toBe(false);
+  });
+
+  /** Every folder has had its first sync (so no other folder is still syncing in the background). */
+  async function waitForBootstrap(accountId: string): Promise<void> {
+    await waitFor('all folders synced once', () =>
+      h!.engine.ctx.folders
+        .rowsForAccount(accountId)
+        .filter((f) => f.selectable === 1)
+        .every((f) => f.uidvalidity !== null),
+    );
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  /** Count jobs that run at the same time on the account (sync and load older both use `run`). */
+  function watchRuns(accountId: string) {
+    const session = h!.engine.sessions.get(accountId);
+    const orig = session.run.bind(session);
+    const st = { cur: 0, max: 0, failNext: false };
+    (session as unknown as { run: typeof orig }).run = (async (prio, fn) => {
+      // Only the two folder writers count (not backfills, folder discovery, ...).
+      if (!/loadOlder|syncFolder/.test(fn.toString())) return orig(prio, fn);
+      st.cur++;
+      st.max = Math.max(st.max, st.cur);
+      try {
+        await new Promise((r) => setTimeout(r, 15)); // widen the window for an overlap
+        if (st.failNext) {
+          st.failNext = false;
+          throw new Error('boom');
+        }
+        return await orig(prio, fn);
+      } finally {
+        st.cur--;
+      }
+    }) as typeof orig;
+    return st;
+  }
+
+  it('a sync that starts during a load older queues behind it (never two writers)', async () => {
+    await start();
+    const a = await h!.addAccount({ syncDays: 30 });
+    await waitForBootstrap(a.id);
+    const inboxId = h!.folderByRole(a.id, 'inbox').id;
+    const st = watchRuns(a.id);
+    const older = h!.engine.handle('sync.loadOlder', { folderId: inboxId });
+    const syncs = [1, 2, 3].map(() => h!.engine.sessions.get(a.id).syncFolderById(inboxId));
+    await Promise.all([older, ...syncs]);
+    expect(st.max).toBe(1);
+    expect(h!.inboxMessages(a.id)).toHaveLength(RECENT + OLD);
+  });
+
+  it('an error inside the locked section gives the lock back', async () => {
+    await start();
+    const a = await h!.addAccount({ syncDays: 30 });
+    await waitForBootstrap(a.id);
+    const inboxId = h!.folderByRole(a.id, 'inbox').id;
+    const st = watchRuns(a.id);
+    st.failNext = true;
+    await expect(h!.engine.handle('sync.loadOlder', { folderId: inboxId })).rejects.toBeTruthy();
+    const res = (await h!.engine.handle('sync.loadOlder', { folderId: inboxId })) as { fetched: number };
+    expect(res.fetched).toBe(OLD);
+    await h!.engine.sessions.get(a.id).syncFolderById(inboxId);
   });
 });

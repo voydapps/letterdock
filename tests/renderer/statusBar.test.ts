@@ -185,13 +185,13 @@ describe('background download (prefetch) text', () => {
   const pf = (done: number, total: number) => ({ prefetch: { done, total } });
   it('sums over the accounts and drops the numbers from the announcement', () => {
     const m = left({ st: [status('a', pf(120, 500)), status('b', pf(30, 200))] });
-    expect(m.text).toBe('Downloading mail… 150 of 700');
+    expect(m.text).toBe('Downloading mail... 150 of 700');
     expect(m.announce).toBe('Downloading mail');
     expect(m.kind).toBe('idle');
   });
   it('ignores turned-off accounts', () => {
     const m = left({ accts: [account('a', 'Alter'), account('b', 'Off', false)], st: [status('a', pf(1, 25)), status('b', pf(9, 900))] });
-    expect(m.text).toBe('Downloading mail… 1 of 25');
+    expect(m.text).toBe('Downloading mail... 1 of 25');
   });
   it('sign-in, errors and offline come first', () => {
     expect(left({ st: [status('a', pf(1, 50)), status('b', { state: 'retrying', nextRetryAt: NOW + 60_000 })] }).kind).toBe('error');

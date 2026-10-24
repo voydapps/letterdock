@@ -77,9 +77,9 @@ export function prefetchTotals(accounts: Account[], statuses: Record<AccountId, 
   return total > 0 ? { done, total } : null;
 }
 
-/** "Downloading mail… 120 of 500" (shown only when nothing more important is going on). */
+/** "Downloading mail... 120 of 500" (shown only when nothing more important is going on). */
 export function prefetchText(p: { done: number; total: number }): string {
-  return `Downloading mail… ${num(p.done)} of ${num(p.total)}`;
+  return `Downloading mail... ${num(p.done)} of ${num(p.total)}`;
 }
 
 export function leftModel(i: LeftInput): LeftModel {

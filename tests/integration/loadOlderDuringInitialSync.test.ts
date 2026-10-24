@@ -2,7 +2,7 @@
 // Kept in its own file: a worker crash seen in this situation must not take other tests down.
 // The first sync writes the folder cursors last, so "load older" has to wait for it.
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHarness, waitFor, waitForInboxCursors, type Harness } from '../fakes/engineHarness';
+import { createHarness, waitFor, type Harness } from '../fakes/engineHarness';
 import { rawMessage, startFakeImap, type FakeImapServer } from '../fakes/fakeImapServer';
 
 const DAY = 86_400_000;

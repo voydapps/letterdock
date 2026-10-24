@@ -4,6 +4,7 @@ import { pendingText, syncKindOf, syncText } from '../../components/Sync';
 import { useApp } from '../../store/app';
 import { useAccountColor } from '../../lib/hooks';
 import { call } from '../../lib/api';
+import { prefetchText, prefetchTotals } from '../../lib/statusBar';
 import { reportActionError, toast } from '../../store/toasts';
 
 export function syncAll(): void {
@@ -24,6 +25,7 @@ export const SyncPopover = forwardRef<HTMLDivElement, { placement: 'below' | 'ab
   const authRequired = useApp((s) => s.authRequired);
   const online = useApp((s) => s.online);
   const colorOf = useAccountColor();
+  const pf = prefetchTotals(accounts, statuses);
   const kinds = accounts.map((a) => ({ a, kind: syncKindOf(statuses[a.id], !!authRequired[a.id], online) }));
 
   const pos =
@@ -45,6 +47,9 @@ export const SyncPopover = forwardRef<HTMLDivElement, { placement: 'below' | 'ab
         </Button>
       </div>
       {accounts.length === 0 ? <div className="hint">No accounts yet.</div> : null}
+      <div className="hint" role="status" aria-live="polite" style={{ marginBottom: pf ? 6 : 0 }}>
+        {pf ? prefetchText(pf) : null}
+      </div>
       <div className="scroll" style={{ maxHeight: 320 }}>
         {kinds.map(({ a, kind }) => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>

@@ -2044,7 +2044,7 @@ export function installFakeApi(): void {
 
 // ---------- status bar scenarios (dev only) ----------
 const SCENARIOS = [
-  'upToDate', 'upToDateOne', 'syncing', 'syncingUnknown', 'syncingMany', 'error', 'errorMany', 'signIn', 'signInOne',
+  'upToDate', 'upToDateOne', 'prefetch', 'syncing', 'syncingUnknown', 'syncingMany', 'error', 'errorMany', 'signIn', 'signInOne',
   'offline', 'online', 'pending', 'outboxSending', 'outboxQueued', 'outboxFailed', 'updateDownloading', 'updateReady',
   'updateIdle', 'reset', 'longThread',
 ];
@@ -2079,7 +2079,7 @@ function runScenario(name: string): void {
     return;
   }
   const calm = (): void => {
-    for (const a of accounts.map((x) => x.id)) setStatus(a, { state: 'online', error: null, nextRetryAt: null, lastSyncAt: Date.now() - 5 * 60_000, pendingCount: 0 });
+    for (const a of accounts.map((x) => x.id)) setStatus(a, { state: 'online', error: null, nextRetryAt: null, lastSyncAt: Date.now() - 5 * 60_000, pendingCount: 0, prefetch: undefined });
     for (const a of accounts.map((x) => x.id)) emit({ type: 'sync:progress', accountId: a, folderId: null, phase: 'idle', done: 0, total: null });
     window.dispatchEvent(new Event('online'));
   };
@@ -2131,6 +2131,10 @@ function runScenario(name: string): void {
     case 'syncing':
       setStatus('a1', { state: 'syncing' });
       emit({ type: 'sync:progress', accountId: 'a1', folderId: 1, phase: 'initial', done: 120, total: 500 });
+      break;
+    case 'prefetch':
+      setStatus('a1', { prefetch: { done: 120, total: 500 } });
+      setStatus('a3', { prefetch: { done: 30, total: 200 } });
       break;
     case 'syncingUnknown':
       setStatus('a1', { state: 'syncing' });

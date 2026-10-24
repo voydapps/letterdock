@@ -959,6 +959,22 @@ function MailStorage() {
       <p className="hint" style={{ marginTop: -6 }}>
         Downloaded mail is removed from this PC, oldest opened first, when it passes this size. It downloads again when you open it.
       </p>
+      <SelectField
+        label="Download new mail in the background"
+        value={String(settings.prefetchDays)}
+        onChange={(e) => void set({ prefetchDays: Number(e.target.value) as AppSettings['prefetchDays'] })}
+        aria-describedby="prefetch-days-help"
+        style={{ maxWidth: 260 }}
+      >
+        <option value="0">Off</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="-1">All mail</option>
+      </SelectField>
+      <p className="hint" id="prefetch-days-help" style={{ marginTop: -6 }}>
+        Mail is downloaded ahead of time so it opens at once and can be searched without a connection. Uses space from the limit above.
+      </p>
     </>
   );
 }

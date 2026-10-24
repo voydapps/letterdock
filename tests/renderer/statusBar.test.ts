@@ -180,3 +180,28 @@ describe('right side', () => {
     expect(rightItems({ state: 'checking', currentVersion: '1' }, [], NOW)).toEqual([]);
   });
 });
+
+describe('background download (prefetch) text', () => {
+  const pf = (done: number, total: number) => ({ prefetch: { done, total } });
+  it('sums over the accounts and drops the numbers from the announcement', () => {
+    const m = left({ st: [status('a', pf(120, 500)), status('b', pf(30, 200))] });
+    expect(m.text).toBe('Downloading mail… 150 of 700');
+    expect(m.announce).toBe('Downloading mail');
+    expect(m.kind).toBe('idle');
+  });
+  it('ignores turned-off accounts', () => {
+    const m = left({ accts: [account('a', 'Alter'), account('b', 'Off', false)], st: [status('a', pf(1, 25)), status('b', pf(9, 900))] });
+    expect(m.text).toBe('Downloading mail… 1 of 25');
+  });
+  it('sign-in, errors and offline come first', () => {
+    expect(left({ st: [status('a', pf(1, 50)), status('b', { state: 'retrying', nextRetryAt: NOW + 60_000 })] }).kind).toBe('error');
+    expect(left({ st: [status('a', pf(1, 50)), status('b')], authRequired: { a: 'password' } }).kind).toBe('auth');
+    const off = left({ st: [status('a', pf(1, 50)), status('b')], online: false });
+    expect(off.kind).toBe('offline');
+    expect(off.text).not.toContain('Downloading');
+  });
+  it('goes away when the status has no prefetch', () => {
+    expect(left({ st: [status('a', pf(5, 50)), status('b')] }).text).toContain('Downloading');
+    expect(left({ st: [status('a'), status('b')] }).text).toBe('All accounts up to date');
+  });
+});

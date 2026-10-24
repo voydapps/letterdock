@@ -64,6 +64,24 @@ export interface LeftModel {
   tone: 'normal' | 'danger' | 'warn';
 }
 
+/** Background download of new mail, summed over the accounts that are on. Null when none is running. */
+export function prefetchTotals(accounts: Account[], statuses: Record<AccountId, AccountStatus>): { done: number; total: number } | null {
+  let done = 0;
+  let total = 0;
+  for (const a of accounts) {
+    const p = a.enabled ? statuses[a.id]?.prefetch : undefined;
+    if (!p || p.total <= 0) continue;
+    done += Math.min(p.done, p.total);
+    total += p.total;
+  }
+  return total > 0 ? { done, total } : null;
+}
+
+/** "Downloading mail… 120 of 500" (shown only when nothing more important is going on). */
+export function prefetchText(p: { done: number; total: number }): string {
+  return `Downloading mail… ${num(p.done)} of ${num(p.total)}`;
+}
+
 export function leftModel(i: LeftInput): LeftModel {
   const live = i.accounts.filter((a) => a.enabled);
   const kinds = live.map((a) => ({ a, kind: syncKindOf(i.statuses[a.id], !!i.authRequired[a.id], i.online) }));
@@ -121,6 +139,11 @@ export function leftModel(i: LeftInput): LeftModel {
         announce: 'Changes waiting to sync',
       };
     default: {
+      const pf = prefetchTotals(live, i.statuses);
+      if (pf) {
+        // Lower than errors, offline, sign-in and syncing; higher than "up to date". No numbers in the announcement.
+        return { ...base, kind: 'idle', text: prefetchText(pf), short: 'Downloading...', announce: 'Downloading mail' };
+      }
       const last = live.reduce<number | null>((m, a) => {
         const t = i.statuses[a.id]?.lastSyncAt ?? null;
         return t && (m === null || t > m) ? t : m;

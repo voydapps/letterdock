@@ -1065,23 +1065,31 @@ export class MessageRepo {
   }
 
   // ---------- body & attachments ----------
-  saveBody(id: MessageId, body: BodyInput, now: number): void {
+  /**
+   * Store a downloaded body. `opts.prefetched`: the background download saved it, the user has not
+   * opened it, so `opened_at` stays NULL (the cache cleanup then orders it by the message date).
+   * Returns the bytes the cache now holds for this body (text + html + stored source).
+   */
+  saveBody(id: MessageId, body: BodyInput, now: number, opts: { prefetched?: boolean } = {}): number {
     const row = this.row(id);
-    if (!row) return;
+    if (!row) return 0;
+    const bytes = (body.text?.length ?? 0) + (body.html?.length ?? 0) + (body.rawZ?.length ?? 0);
     this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO body (message_pk, text_plain, html, fetched_at, size_bytes, raw_z, raw_bytes)
-           VALUES (?,?,?,?,?,?,?)
+          `INSERT INTO body (message_pk, text_plain, html, fetched_at, opened_at, size_bytes, raw_z, raw_bytes)
+           VALUES (?,?,?,?,?,?,?,?)
            ON CONFLICT(message_pk) DO UPDATE SET text_plain=excluded.text_plain, html=excluded.html,
              fetched_at=excluded.fetched_at, size_bytes=excluded.size_bytes,
-             raw_z=excluded.raw_z, raw_bytes=excluded.raw_bytes`,
+             raw_z=excluded.raw_z, raw_bytes=excluded.raw_bytes,
+             opened_at=COALESCE(excluded.opened_at, body.opened_at)`,
         )
         .run(
           id,
           body.text,
           body.html,
           now,
+          opts.prefetched ? null : now,
           (body.text?.length ?? 0) + (body.html?.length ?? 0),
           body.rawZ ?? null,
           body.rawZ?.length ?? 0,
@@ -1116,6 +1124,7 @@ export class MessageRepo {
         body: body.ftsBodyText,
       });
     })();
+    return bytes;
   }
 
   /** Total size of downloaded bodies plus attachment files kept on disk (bytes). */
@@ -1137,7 +1146,7 @@ export class MessageRepo {
                 b.size_bytes + b.raw_bytes + COALESCE((SELECT SUM(a.size) FROM attachment a
                                          WHERE a.message_pk = b.message_pk AND a.cached_path IS NOT NULL), 0) AS bytes
          FROM body b JOIN message m ON m.id = b.message_pk
-         ORDER BY b.fetched_at ASC, b.message_pk ASC LIMIT ?`,
+         ORDER BY COALESCE(b.opened_at, m.date_ms) ASC, b.message_pk ASC LIMIT ?`,
       )
       .all(limit) as { id: number; accountId: string; bytes: number }[];
     return rows;
@@ -1145,7 +1154,73 @@ export class MessageRepo {
 
   /** Mark a cached body as just opened (the cache removes the least recently opened first). */
   touchBody(id: MessageId, now: number): void {
-    this.db.prepare('UPDATE body SET fetched_at = ? WHERE message_pk = ?').run(now, id);
+    this.db.prepare('UPDATE body SET opened_at = ? WHERE message_pk = ?').run(now, id);
+  }
+
+  // ---------- background download (prefetch) ----------
+
+  /**
+   * Ids of Inbox mail of one account whose body is not downloaded, newest first (unread first within
+   * a day). The backfill queue: ids only, one batch at a time, so a 50k mailbox costs nothing in
+   * memory. Mail with an unknown size is left out (the size rule needs it). Rows with uid <= 0 are
+   * waiting for a move on this PC.
+   */
+  prefetchNextIds(
+    accountId: string,
+    cutoffMs: number,
+    maxBytes: number,
+    limit: number,
+    excludeKeys: string[],
+  ): { id: MessageId; key: string }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT m.id, (m.id || ':' || m.uid || ':' || COALESCE((SELECT uidvalidity FROM folder WHERE id = m.folder_id), 0)) AS key FROM message m
+           WHERE m.folder_id IN (SELECT id FROM folder WHERE account_id = @acc AND role = 'inbox')
+             AND m.body_state = 'none' AND m.uid > 0 AND m.flag_deleted = 0 AND m.flag_draft = 0
+             AND m.size IS NOT NULL AND m.size <= @max AND m.date_ms >= @cutoff
+             AND (m.id || ':' || m.uid || ':' || COALESCE((SELECT uidvalidity FROM folder WHERE id = m.folder_id), 0)) NOT IN (SELECT value FROM json_each(@skip))
+           ORDER BY (m.date_ms / 86400000) DESC, m.flag_seen ASC, m.date_ms DESC, m.id DESC
+           LIMIT @limit`,
+        )
+        .all({
+          acc: accountId,
+          max: maxBytes,
+          cutoff: cutoffMs,
+          skip: JSON.stringify(excludeKeys),
+          limit,
+        }) as { id: number; key: string }[]
+    );
+  }
+
+  /** How many messages `prefetchNextIds` would find in total (for the progress text). */
+  prefetchCount(accountId: string, cutoffMs: number, maxBytes: number, excludeKeys: string[]): number {
+    return (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM message m
+           WHERE m.folder_id IN (SELECT id FROM folder WHERE account_id = @acc AND role = 'inbox')
+             AND m.body_state = 'none' AND m.uid > 0 AND m.flag_deleted = 0 AND m.flag_draft = 0
+             AND m.size IS NOT NULL AND m.size <= @max AND m.date_ms >= @cutoff
+             AND (m.id || ':' || m.uid || ':' || COALESCE((SELECT uidvalidity FROM folder WHERE id = m.folder_id), 0)) NOT IN (SELECT value FROM json_each(@skip))`,
+        )
+        .get({ acc: accountId, max: maxBytes, cutoff: cutoffMs, skip: JSON.stringify(excludeKeys) }) as {
+        n: number;
+      }
+    ).n;
+  }
+
+  /** A key (id, uid, folder UIDVALIDITY: changes when the folder is rebuilt) when this message is still a candidate (Inbox of the account, no body yet, small, not being moved), else null. */
+  prefetchEligible(accountId: string, id: MessageId, maxBytes: number): string | null {
+    const r = this.db
+        .prepare(
+          `SELECT (m.id || ':' || m.uid || ':' || COALESCE((SELECT uidvalidity FROM folder WHERE id = m.folder_id), 0)) AS key FROM message m JOIN folder f ON f.id = m.folder_id
+           WHERE m.id = ? AND m.account_id = ? AND f.role = 'inbox' AND m.body_state = 'none'
+             AND m.uid > 0 AND m.flag_deleted = 0 AND m.flag_draft = 0
+             AND m.size IS NOT NULL AND m.size <= ?`,
+        )
+        .get(id, accountId, maxBytes) as { key: string } | undefined;
+    return r ? r.key : null;
   }
 
   /**

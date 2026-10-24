@@ -57,6 +57,12 @@ export interface EngineOptions {
   sendRetryDelaysMs?: number[];
   /** Pause between two scheduled messages that go out one after the other (default 2000). */
   scheduledSpacingMs?: number;
+  /** Test-only: wait after the first sync before the background download starts (default 20000). */
+  prefetchStartDelayMs?: number;
+  /** Test-only: pause between two background downloads of one account (default 250). */
+  prefetchGapMs?: number;
+  /** Test-only: pause of an account after a server rate-limit answer (default 10 minutes). */
+  prefetchPauseMs?: number;
   /** Messages per batch when rules run on a folder (default 500). */
   rulesBatchSize?: number;
 }
@@ -104,6 +110,9 @@ export function createEngine(opts: EngineOptions): Engine {
     actionRetryDelaysMs: opts.actionRetryDelaysMs,
     sendRetryDelaysMs: opts.sendRetryDelaysMs,
     scheduledSpacingMs: opts.scheduledSpacingMs,
+    prefetchStartDelayMs: opts.prefetchStartDelayMs,
+    prefetchGapMs: opts.prefetchGapMs,
+    prefetchPauseMs: opts.prefetchPauseMs,
     rulesBatchSize: opts.rulesBatchSize,
     recentMoves: new Map(),
   } as unknown as EngineContext;
@@ -111,6 +120,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const sessions = new SessionManager(ctx);
   const accounts = new AccountService(ctx, sessions, opts.discoverDeps ?? makeNetworkDeps());
   const messages = new MessageService(ctx, sessions);
+  ctx.prefetchMessage = (id) => messages.prefetch(id);
   const actions = new ActionService(ctx, sessions);
   const folderSvc = new FolderService(ctx, sessions, actions);
   const search = new SearchService(ctx, sessions);
@@ -278,12 +288,17 @@ export function createEngine(opts: EngineOptions): Engine {
       | 'unsubscribe.targets'
       | 'unsubscribe.sendMailto'
       | 'notifications.action'
-      | 'scheduled.recheck']: (
+      | 'scheduled.recheck'
+      | 'system.powerChanged']: (
       req: MainToEngineMethods[K]['req'],
     ) => Promise<MainToEngineMethods[K]['res']> | MainToEngineMethods[K]['res'];
   } = {
     // Settings are read lazily through opts.settings(); a smaller cache cap trims at once.
-    'engine.settings': () => cleanBodyCache(),
+    'engine.settings': () => {
+      sessions.prefetchSettingsChanged();
+      return cleanBodyCache();
+    },
+    'system.powerChanged': (r) => sessions.setOnBattery(r.onBattery),
     'attachments.prepare': (r) => messages.prepareAttachment(r.attachmentId),
     'messages.sourceBytes': (r) => messages.sourceBytes(r.messageId),
     'eml.open': (r) => eml.open(r),
@@ -351,7 +366,10 @@ export function createEngine(opts: EngineOptions): Engine {
     scheduled,
     rules,
     light: { snooze, pinMute, unsubscribe },
-    applySettings: () => cleanBodyCache(),
+    applySettings: () => {
+      sessions.prefetchSettingsChanged();
+      return cleanBodyCache();
+    },
     threadsReady: () => threadBackfill.whenDone(),
     snippetRepairReady: () => snippetRepair.whenDone(),
     async handle(channel, payload) {

@@ -331,6 +331,7 @@ const settings: AppSettings = {
   closeToTray: false,
   launchAtLogin: false,
   maxBodyCacheMB: 2048,
+  prefetchDays: 30,
   imageCacheMaxMb: 500,
   imageCacheMaxAgeDays: 30,
   maxWorkConnectionsPerAccount: 2,

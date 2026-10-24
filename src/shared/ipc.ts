@@ -98,6 +98,12 @@ export interface AccountStatus {
    * 0 when everything is in sync. Shown as "N changes waiting to sync".
    */
   pendingCount: number;
+  /**
+   * Background download of mail bodies (Settings > Mail). Only present while an initial backfill of
+   * more than 20 messages is running; absent for single new messages, when done, paused, offline or
+   * stopped by the cache size limit. The status bar sums it over all accounts.
+   */
+  prefetch?: { done: number; total: number };
 }
 
 export type FolderRole =
@@ -1153,6 +1159,11 @@ export interface AppSettings {
   launchAtLogin: boolean;
   /** Size cap (MB) of downloaded message bodies and attachments kept on this PC (50..100000). Oldest-opened are removed first; they download again when opened. */
   maxBodyCacheMB: number;
+  /**
+   * Download new mail in the background (Settings > Mail): how far back, in days.
+   * 0 = off, 7, 30 (default), 90, -1 = all mail. New mail is always downloaded unless this is 0.
+   */
+  prefetchDays: 0 | 7 | 30 | 90 | -1;
   /** Size cap of the remote image cache on disk (MB). Default 500. */
   imageCacheMaxMb: number;
   /** Cached images not shown for this many days are removed (7, 30 or 90; default 30). */

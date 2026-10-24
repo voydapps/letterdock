@@ -32,6 +32,11 @@ export interface HarnessOptions {
   now?: () => number;
   /** Pause between scheduled messages that leave one after the other. Default 20 ms. */
   scheduledSpacingMs?: number;
+  /** Wait after the first sync before the background download starts. Default: 3600000 (never in a test). */
+  prefetchStartDelayMs?: number;
+  /** Pause between two background downloads. Default 0. */
+  prefetchGapMs?: number;
+  prefetchPauseMs?: number;
 }
 
 export interface Harness {
@@ -102,6 +107,10 @@ export async function createHarness(
     sendRetryDelaysMs: opts.sendRetryDelaysMs ?? [30, 30, 30],
     now: opts.now,
     scheduledSpacingMs: opts.scheduledSpacingMs ?? 20,
+    // The background download stays off in tests unless a test asks for it.
+    prefetchStartDelayMs: opts.prefetchStartDelayMs ?? 3_600_000,
+    prefetchGapMs: opts.prefetchGapMs ?? 0,
+    prefetchPauseMs: opts.prefetchPauseMs,
   });
 
   const h: Harness = {

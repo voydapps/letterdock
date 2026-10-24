@@ -28,10 +28,13 @@ import { isWidenPending, pruneToWindow, setWidenPending, widenFolder } from './h
 import { backoffDelayMs } from './syncDiff';
 import { newMailToAnnounce } from '../notify';
 import { backfillThreadIdsBatch, markThreadIdsDone, threadIdsDone } from './threadIds';
+import { Prefetcher } from '../messages/prefetch';
 
 export interface SessionShared {
   semaphore: Semaphore;
   idleBudget: IdleBudget;
+  /** The PC runs on battery (main tells the engine). The background download then skips the backfill. */
+  power: { onBattery: boolean };
 }
 
 const INBOX_POLL_IDLE_MS = 2 * 60_000;
@@ -72,12 +75,30 @@ export class AccountSession {
   private forceTokenRefresh = false;
   private backfillRunning = false;
   private backfilled = new Map<FolderId, number>();
+  private readonly prefetcher: Prefetcher;
 
   constructor(
     private readonly ctx: EngineContext,
     private account: Account,
     private readonly shared: SessionShared,
-  ) {}
+  ) {
+    this.prefetcher = new Prefetcher(ctx, {
+      accountId: account.id,
+      ready: () => this.isReady(),
+      userWorkQueued: () =>
+        (this.pool?.pending('user') ?? 0) + (this.pool?.pending('sync') ?? 0) > 0,
+      onBattery: () => this.shared.power.onBattery,
+      statusChanged: () => this.refreshStatus(),
+    });
+  }
+
+  /** The setting for the background download changed, or the PC switched between battery and mains. */
+  prefetchSettingsChanged(): void {
+    this.prefetcher.onSettingsChanged();
+  }
+  prefetchPowerChanged(): void {
+    this.prefetcher.kick();
+  }
 
   get id(): string {
     return this.account.id;
@@ -88,6 +109,7 @@ export class AccountSession {
   }
 
   getStatus(): AccountStatus {
+    const prefetch = this.prefetcher.getProgress();
     return {
       accountId: this.account.id,
       state: this.state,
@@ -95,6 +117,7 @@ export class AccountSession {
       error: this.error,
       nextRetryAt: this.nextRetryAt,
       pendingCount: pendingTotal(this.ctx, this.account.id),
+      ...(prefetch ? { prefetch } : {}),
     };
   }
 
@@ -134,6 +157,7 @@ export class AccountSession {
   async stop(finalState: ConnectionState = 'disabled'): Promise<void> {
     this.stopped = true;
     this.connectGeneration++;
+    this.prefetcher.stop();
     this.clearTimers();
     this.shared.idleBudget.release(this.account.id);
     const idle = this.idleClient;
@@ -434,6 +458,7 @@ export class AccountSession {
     await this.widenHistory();
     void this.backfillSnippets();
     void this.backfillThreadIds();
+    if (!this.stopped) this.prefetcher.start();
   }
 
   private threadIdsRunning = false;
@@ -619,6 +644,12 @@ export class AccountSession {
             syncFolder(this.ctx, c, fresh, this.account.syncDays),
           );
           this.lastSyncAt = this.ctx.now();
+          if (fresh.role === 'inbox') {
+            // New Inbox mail is downloaded in the background; other ticks also let a download that
+            // stopped at the cache limit look again.
+            if (res.kind === 'incremental') this.prefetcher.noteArrivals(res.added);
+            else this.prefetcher.kick();
+          }
           // Rules sort the new mail first, so mail that is moved, read or deleted does not notify.
           await this.ctx.rules?.onNewMail(fresh, res).catch((e) =>
             this.ctx.log.warn({ err: String((e as Error)?.message ?? e) }, 'rules failed on new mail'),

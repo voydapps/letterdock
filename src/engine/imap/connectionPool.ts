@@ -153,6 +153,11 @@ export class WorkPool {
     });
   }
 
+  /** Jobs of this lane that wait for a connection (not the ones that run). */
+  pending(priority: Priority): number {
+    return this.queues[priority].length;
+  }
+
   private next(): Job | undefined {
     for (const p of PRIORITY_ORDER) {
       const j = this.queues[p].shift();

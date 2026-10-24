@@ -18,6 +18,9 @@ import type { PreparedAttachment } from '../../shared/internal';
 import { AppException } from '../../shared/errors';
 import type { EngineContext } from '../context';
 import type { SessionManager } from '../imap/sessionManager';
+import { clearCommandFailure, takeCommandFailure, type Priority } from '../imap/connectionPool';
+import { mapNetworkError } from '../imap/errors';
+import { MAX_PREFETCH_BYTES, type PrefetchResult } from './prefetch';
 import { rowToHeader, type MessageRow } from '../db/repos/messageRepo';
 import { ftsText, hasRemoteImages, makeSnippet, safeFileName } from './bodyUtils';
 import { readListHeaders } from '../../shared/listUnsubscribe';
@@ -31,8 +34,24 @@ const MAX_CID_BYTES = 2 * 1024 * 1024;
 // mailparser inline every image as a data: URI.
 const PARSER_OPTIONS = { skipImageLinks: true };
 
+/** A body download that is running (opened by the user, or by the background download). */
+interface Fetching {
+  promise: Promise<MessageBody>;
+  /** Started by the background download (lane 'background'). */
+  prefetch: boolean;
+  /** The connection job has begun. A prefetch that has not begun yet is replaced by a user open. */
+  started: boolean;
+  aborted: boolean;
+  /** Bytes the cache holds for the saved body (for the cache size count). */
+  savedBytes: number;
+}
+
+/** What a server says when it refuses to serve us because we ask too much. */
+const RATE_LIMIT_RE =
+  /too many|rate.?limit|throttl|\blimit\b|exceeded|bandwidth|try again (later|in)|temporar|unavailable|\bbusy\b|overquota/i;
+
 export class MessageService {
-  private inflight = new Map<MessageId, Promise<MessageBody>>();
+  private inflight = new Map<MessageId, Fetching>();
 
   constructor(
     private readonly ctx: EngineContext,
@@ -119,10 +138,76 @@ export class MessageService {
       return Promise.resolve(this.buildBody(row, false, cached));
     }
     const running = this.inflight.get(id);
-    if (running) return running;
-    const p = this.fetchAndCache(row).finally(() => this.inflight.delete(id));
-    this.inflight.set(id, p);
-    return p;
+    if (running) {
+      if (!running.prefetch) return running.promise;
+      if (running.started) {
+        // The background download is fetching this one right now: wait for it (one download), and
+        // then count it as opened.
+        return running.promise.then((b) => {
+          this.ctx.messages.touchBody(id, this.ctx.now());
+          return b;
+        });
+      }
+      // Only queued: the open goes first on the 'user' lane; the queued job does nothing.
+      running.aborted = true;
+    }
+    return this.startFetch(row, 'user').promise;
+  }
+
+  private startFetch(row: MessageRow, lane: Priority): Fetching {
+    const entry: Fetching = {
+      promise: undefined as unknown as Promise<MessageBody>,
+      prefetch: lane === 'background',
+      started: false,
+      aborted: false,
+      savedBytes: 0,
+    };
+    entry.promise = this.fetchAndCache(row, entry, lane).finally(() => {
+      if (this.inflight.get(row.id) === entry) this.inflight.delete(row.id);
+    });
+    this.inflight.set(row.id, entry);
+    return entry;
+  }
+
+  /**
+   * Download one body in the background (DESIGN-SPEC "prefetch"). Same path as opening the message,
+   * on the 'background' lane, saved without an "opened" time. Never throws: the answer tells the
+   * loop what to do next.
+   */
+  async prefetch(id: MessageId): Promise<PrefetchResult> {
+    const row = this.ctx.messages.row(id);
+    if (
+      !row ||
+      row.body_state === 'cached' ||
+      row.uid <= 0 ||
+      row.flag_deleted === 1 ||
+      row.size === null ||
+      row.size > MAX_PREFETCH_BYTES ||
+      this.inflight.has(id)
+    ) {
+      return { kind: 'skip' };
+    }
+    const entry = this.startFetch(row, 'background');
+    try {
+      await entry.promise;
+      return { kind: 'ok', bytes: entry.savedBytes };
+    } catch (e) {
+      if (entry.aborted) return { kind: 'skip' };
+      const err = mapNetworkError(e);
+      if (err.code === 'NOT_FOUND') return { kind: 'gone' };
+      if (
+        err.code === 'HOST_UNREACHABLE' ||
+        err.code === 'TIMEOUT' ||
+        err.code === 'TLS_ERROR' ||
+        err.code === 'AUTH_FAILED' ||
+        err.code === 'OAUTH_REAUTH_REQUIRED'
+      ) {
+        return { kind: 'offline' };
+      }
+      if (RATE_LIMIT_RE.test(`${err.message} ${err.details ?? ''}`)) return { kind: 'rateLimited' };
+      this.ctx.log.debug({ code: err.code }, 'background download of one message failed');
+      return { kind: 'error' };
+    }
   }
 
   /** Where the server has this message right now: the folder path, uid and Message-ID to look for. */
@@ -169,11 +254,26 @@ export class MessageService {
     };
   }
 
-  private async fetchSource(row: MessageRow): Promise<Buffer> {
+  private async fetchSource(
+    row: MessageRow,
+    lane: Priority = 'user',
+    ctl?: Pick<Fetching, 'started' | 'aborted'>,
+  ): Promise<Buffer> {
     const loc = await this.sourceLocation(row);
     const session = this.sessions.get(row.account_id);
-    return session.run('user', async (c) => {
+    return session.run(lane, async (c) => {
+      if (ctl?.aborted) throw new AppException('NOT_FOUND', 'Skipped: the message is being opened.');
+      if (ctl) ctl.started = true;
+      clearCommandFailure(c);
       const mb = await c.mailboxOpen(loc.path, { readOnly: true });
+      if (lane === 'background' && loc.uv === null) {
+        // The folder was rebuilt on the server since the last sync: the stored uid may now belong to
+        // another message. Do not download it; the next sync of the folder rebuilds the rows.
+        const known = this.ctx.folders.syncState(row.folder_id)?.uidvalidity ?? null;
+        if (known !== null && Number(mb.uidValidity) !== known) {
+          throw new AppException('NOT_FOUND', 'The folder changed on the server.');
+        }
+      }
       let uid = loc.uid;
       if (loc.uv !== null && Number(mb.uidValidity) !== loc.uv) {
         // The folder was rebuilt on the server: find the message again by its Message-ID.
@@ -188,18 +288,39 @@ export class MessageService {
       }
       const m = await c.fetchOne(String(uid), { source: true }, { uid: true });
       if (!m || !m.source) {
+        // imapflow answers a refused FETCH with "nothing". Tell a busy server from a missing message.
+        const refusal = takeCommandFailure(c);
+        const said = `${refusal?.code ?? ''} ${refusal?.text ?? ''}`.trim();
+        if (refusal && RATE_LIMIT_RE.test(said)) {
+          throw new AppException('SERVER_REJECTED', 'The mail server is busy. Try again in a moment.', {
+            details: said,
+            retryable: true,
+          });
+        }
         throw new AppException('NOT_FOUND', 'This message is no longer on the server.');
       }
       return m.source;
     });
   }
 
-  private async fetchAndCache(row: MessageRow): Promise<MessageBody> {
+  private async fetchAndCache(row: MessageRow, ctl: Fetching, lane: Priority): Promise<MessageBody> {
     if (row.size !== null && row.size > MAX_DISPLAY_BYTES) {
       return { ...this.buildBody(row, true), html: null, text: null };
     }
-    const source = await this.fetchSource(row);
+    const source = await this.fetchSource(row, lane, ctl);
+    // Deleted or moved away while the download ran: drop it (and write no files for it).
+    if (!this.ctx.messages.row(row.id)) {
+      throw new AppException('NOT_FOUND', 'This message is no longer available.');
+    }
     const parsed = await simpleParser(source, PARSER_OPTIONS);
+    if (ctl.prefetch && row.message_id && parsed.messageId) {
+      // Safety net for the background download: if the folder was rebuilt between the check and the
+      // fetch, the uid can point at another message. Never store that body under this row.
+      const bare = (s: string) => s.trim().replace(/^<|>$/g, '').toLowerCase();
+      if (bare(row.message_id) !== bare(parsed.messageId)) {
+        throw new AppException('NOT_FOUND', 'The folder changed on the server.');
+      }
+    }
     const html = typeof parsed.html === 'string' ? parsed.html : null;
     const text = parsed.text ?? null;
 
@@ -234,7 +355,7 @@ export class MessageService {
       });
       index++;
     }
-    this.ctx.messages.saveBody(
+    const saved = this.ctx.messages.saveBody(
       row.id,
       {
         rawZ: await deflate(source).catch(() => null),
@@ -245,7 +366,9 @@ export class MessageService {
         ftsBodyText: ftsText(text, html),
       },
       this.ctx.now(),
+      { prefetched: ctl.prefetch },
     );
+    ctl.savedBytes = saved + atts.reduce((n, a) => n + (a.cachedPath ? a.size : 0), 0);
     // Unsubscribe headers (DESIGN-SPEC 3.13.1): read once, here, while the source is in memory.
     try {
       this.ctx.messages.setListHeaders(row.id, JSON.stringify(readListHeaders(headerPart(source))));

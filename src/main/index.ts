@@ -637,6 +637,13 @@ async function boot(): Promise<void> {
   powerMonitor.on('resume', () => void engine.request('scheduled.recheck', { reason: 'resume' }).catch(() => undefined));
   powerMonitor.on('unlock-screen', () => void engine.request('scheduled.recheck', { reason: 'unlock' }).catch(() => undefined));
 
+  // On battery the engine skips the background download of old mail (new mail still downloads).
+  const sendPower = (onBattery: boolean) =>
+    void engine.request('system.powerChanged', { onBattery }).catch(() => undefined);
+  powerMonitor.on('on-battery', () => sendPower(true));
+  powerMonitor.on('on-ac', () => sendPower(false));
+  if (powerMonitor.isOnBatteryPower()) sendPower(true);
+
   // Tell the engine when the network goes up or down.
   let online = net.isOnline();
   setInterval(() => {

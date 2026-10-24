@@ -111,4 +111,6 @@ export interface MainToEngineMethods {
   };
   /** The PC woke up from sleep or was unlocked: check the scheduled messages again. */
   'scheduled.recheck': { req: { reason: 'resume' | 'unlock' }; res: void };
+  /** The PC switched between battery and mains power. On battery the background download skips the backfill. */
+  'system.powerChanged': { req: { onBattery: boolean }; res: void };
 }

@@ -13,6 +13,7 @@ export class SessionManager {
   private shared: SessionShared = {
     semaphore: new Semaphore(MAX_CONCURRENT_WORK),
     idleBudget: new IdleBudget(MAX_TOTAL_IDLE),
+    power: { onBattery: false },
   };
   private online = true;
   private startTimers: ReturnType<typeof setTimeout>[] = [];
@@ -116,6 +117,18 @@ export class SessionManager {
       if (!a?.enabled) return;
       this.startTimers.push(setTimeout(() => s.start(), i * START_STAGGER_MS));
     });
+  }
+
+  /** Main reports the power source. On battery the background download skips the backfill. */
+  setOnBattery(onBattery: boolean): void {
+    if (this.shared.power.onBattery === onBattery) return;
+    this.shared.power.onBattery = onBattery;
+    for (const s of this.sessions.values()) s.prefetchPowerChanged();
+  }
+
+  /** The setting `prefetchDays` changed (read live from the settings): a bigger window starts at once. */
+  prefetchSettingsChanged(): void {
+    for (const s of this.sessions.values()) s.prefetchSettingsChanged();
   }
 
   async syncAll(): Promise<void> {

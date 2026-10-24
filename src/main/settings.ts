@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   closeToTray: false,
   launchAtLogin: false,
   maxBodyCacheMB: 2048,
+  prefetchDays: 30,
   imageCacheMaxMb: 500,
   imageCacheMaxAgeDays: 30,
   maxWorkConnectionsPerAccount: 2,
@@ -86,6 +87,7 @@ export function mergeSettings(stored: Partial<AppSettings> | undefined): AppSett
       o[key] = v;
     }
   }
+  if (![0, 7, 30, 90, -1].includes(out.prefetchDays)) out.prefetchDays = 30; // only the listed choices
   if (out.shortcutPreset !== 'gmail') out.shortcutPreset = 'outlook'; // only the two known styles
   out.quickReplies = sanitizeQuickReplies(out.quickReplies);
   out.recentCommands = (Array.isArray(out.recentCommands) ? out.recentCommands : [])

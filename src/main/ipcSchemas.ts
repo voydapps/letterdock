@@ -118,6 +118,7 @@ const settingsPatch = z
     closeToTray: z.boolean(),
     launchAtLogin: z.boolean(),
     maxBodyCacheMB: z.number().int().min(50).max(100000),
+    prefetchDays: z.union([z.literal(0), z.literal(7), z.literal(30), z.literal(90), z.literal(-1)]),
     imageCacheMaxMb: z.number().int().min(50).max(10000),
     imageCacheMaxAgeDays: z.number().int().min(1).max(3650),
     maxWorkConnectionsPerAccount: z.number().int().min(1).max(4),

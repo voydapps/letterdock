@@ -6,6 +6,7 @@ import type { AccountRepo } from './db/repos/accountRepo';
 import type { FolderRepo, FolderRow, ListedFolder } from './db/repos/folderRepo';
 import type { MessageRepo } from './db/repos/messageRepo';
 import type { Logger } from './logger';
+import type { PrefetchResult } from './messages/prefetch';
 
 /** Coalesces change notifications (<= 4/sec) and forwards events to main. */
 export class EventHub {
@@ -287,6 +288,14 @@ export interface EngineContext {
   smtpOverrides?: Record<string, unknown>;
   /** Test-only: extra CA certificate trusted for IMAP TLS. Never set in production. */
   imapTrustedCa?: string | Buffer;
+  /** Set by the engine: download one message body in the background (see messages/prefetch.ts). */
+  prefetchMessage?: (id: number) => Promise<PrefetchResult>;
+  /** Wait after the first sync before the background download starts. Default 20000. */
+  prefetchStartDelayMs?: number;
+  /** Pause between two background downloads of one account. Default 250. */
+  prefetchGapMs?: number;
+  /** Pause of an account after a server rate-limit answer. Default 10 minutes. */
+  prefetchPauseMs?: number;
 }
 
 /** Everything of one account that waits for the server: queued changes plus draft uploads. */

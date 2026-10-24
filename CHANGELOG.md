@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.20 - 2026-10-24
+### New
+- New mail is downloaded in the background, so it opens at once. Choose how far back in Settings, Mail. Pictures from the internet still load only when you allow them.
+
 ## 0.6.19 - 2026-10-19
 ### Fixed
 - Letterdock's icons (next to the clock, in the title bar and in the Start menu and shortcuts) are sharp on screens with scaling above 100%.

@@ -132,6 +132,9 @@ export class WorkPool {
   private active = 0;
   private queues: Record<Priority, Job[]> = { user: [], sync: [], background: [] };
   private closed = false;
+  /** Clients that a running job uses, and a way to wait until those jobs are over. */
+  private busy = new Set<ImapFlow>();
+  private waitIdle: (() => void)[] = [];
 
   constructor(
     private readonly create: () => Promise<ImapFlow>,
@@ -186,6 +189,8 @@ export class WorkPool {
       }
       if (client && !client.usable) client = null;
       if (!client) client = await this.create();
+      if (this.closed) throw new Error('pool closed'); // closed while connecting: do not start work
+      this.busy.add(client);
       const result = await job.run(client);
       job.resolve(result);
       this.giveBack(client);
@@ -193,8 +198,10 @@ export class WorkPool {
       if (client) this.discard(client);
       job.reject(e);
     } finally {
+      if (client) this.busy.delete(client);
       release();
       this.active--;
+      if (this.active === 0) for (const w of this.waitIdle.splice(0)) w();
       this.pump();
     }
   }
@@ -219,7 +226,11 @@ export class WorkPool {
     }
   }
 
-  /** Close everything; queued jobs are rejected. */
+  /**
+   * Close everything; queued jobs are rejected. Running jobs lose their connection and end with an
+   * error; this waits (a short while at most) until they are over, so nothing touches the database
+   * or a socket after the caller went on to close them.
+   */
   async close(): Promise<void> {
     this.closed = true;
     for (const p of PRIORITY_ORDER) {
@@ -228,6 +239,16 @@ export class WorkPool {
     for (const i of this.idle.splice(0)) {
       clearTimeout(i.timer);
       this.discard(i.client);
+    }
+    for (const c of this.busy) this.discard(c);
+    if (this.active > 0) {
+      await new Promise<void>((res) => {
+        const t = setTimeout(res, 3_000);
+        this.waitIdle.push(() => {
+          clearTimeout(t);
+          res();
+        });
+      });
     }
   }
 }

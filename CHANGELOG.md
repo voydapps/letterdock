@@ -3,6 +3,8 @@
 ## 0.6.20 - 2026-10-24
 ### New
 - New mail is downloaded in the background, so it opens at once. Choose how far back in Settings, Mail. Pictures from the internet still load only when you allow them.
+### Fixed
+- Fixed a rare crash in the background part of Letterdock when older mail was loaded while an account was still downloading for the first time.
 
 ## 0.6.19 - 2026-10-19
 ### Fixed

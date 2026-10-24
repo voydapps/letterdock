@@ -698,8 +698,30 @@ export class AccountSession {
       this.ctx.hub.emit({ type: 'account:status', status: this.getStatus() });
   }
 
-  async loadOlderFor(folderId: FolderId): Promise<LoadOlderRes> {
-    return this.run('user', (c) => loadOlder(this.ctx, c, folderId));
+  private olderRuns = new Map<FolderId, Promise<LoadOlderRes>>();
+
+  /**
+   * One "load older" per folder at a time (a second request gets the answer of the running one),
+   * and never while a sync of the same folder runs: the first sync writes the folder cursors last,
+   * so older mail cannot be told apart from new mail before it has finished.
+   */
+  loadOlderFor(folderId: FolderId): Promise<LoadOlderRes> {
+    const running = this.olderRuns.get(folderId);
+    if (running) return running;
+    const job = (async () => {
+      for (let i = 0; i < 5; i++) {
+        const sync = this.inflight.get(folderId);
+        if (!sync) break;
+        await sync.promise.catch(() => undefined);
+      }
+      return this.run('user', (c) => loadOlder(this.ctx, c, folderId));
+    })();
+    this.olderRuns.set(folderId, job);
+    const done = () => {
+      if (this.olderRuns.get(folderId) === job) this.olderRuns.delete(folderId);
+    };
+    job.then(done, done);
+    return job;
   }
 
   // ---------- folders ----------

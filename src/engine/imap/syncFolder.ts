@@ -347,6 +347,9 @@ export async function loadOlder(
   if (!folder) return { fetched: 0, reachedStart: true };
   const state = ctx.folders.syncState(folderId)!;
   const oldest = state.oldestSyncedUid;
+  // No cursors yet: the first sync of this folder has not finished. Nothing is known about "older"
+  // then, so do not touch the cursors and do not claim that the start of the mailbox is reached.
+  if (oldest === null && !state.historyComplete) return { fetched: 0, reachedStart: false };
   if (state.historyComplete || oldest === null || oldest <= 1) {
     ctx.folders.saveSyncState(folderId, { historyComplete: true });
     return { fetched: 0, reachedStart: true };

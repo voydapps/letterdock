@@ -96,6 +96,10 @@ export class AccountSession {
   prefetchSettingsChanged(): void {
     this.prefetcher.onSettingsChanged();
   }
+  /** Run the background download now, without the start delay (tests). */
+  prefetchNow(): void {
+    this.prefetcher.startNow();
+  }
   prefetchPowerChanged(): void {
     this.prefetcher.kick();
   }

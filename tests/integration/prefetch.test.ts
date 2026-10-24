@@ -58,7 +58,7 @@ async function kickUntil(hh: Harness, what: string, cond: () => boolean, timeout
   await waitFor(
     what,
     () => {
-      void hh.engine.applySettings();
+      hh.engine.sessions.prefetchNow();
       return cond();
     },
     timeout,
@@ -69,7 +69,7 @@ async function kickUntil(hh: Harness, what: string, cond: () => boolean, timeout
 async function kickFor(hh: Harness, ms: number) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
-    void hh.engine.applySettings();
+    hh.engine.sessions.prefetchNow();
     await settle(40);
   }
 }
@@ -182,6 +182,27 @@ describe('prefetch: the settings choice', () => {
     await step(30, ['d20', 'd3']);
     await step(90, ['d20', 'd3', 'd60']);
     await step(-1, ['d20', 'd200', 'd3', 'd60']);
+  });
+
+  it('saving another setting does not start the download early; a bigger window does', async () => {
+    server = await startFakeImap({ inbox: [mk('Recent'), mk('Month old', { ageMs: 20 * DAY })] });
+    h = await createHarness(server); // the 20 s start delay is long here
+    h.settings.prefetchDays = 7;
+    const acc = await h.addAccount({ syncDays: 400 });
+    await waitFor('rows', () => h!.inboxMessages(acc.id).length === 2);
+    await waitForInboxCursors(h, [acc.id]);
+    await settle(500);
+    for (let i = 0; i < 5; i++) {
+      h.settings.maxBodyCacheMB = 2048 + i; // any other setting
+      await h.engine.applySettings();
+      await settle(100);
+    }
+    expect(cachedSubjects(h)).toEqual([]);
+    h.settings.prefetchDays = 30;
+    await waitFor('bigger window starts at once', () => {
+      void h!.engine.applySettings();
+      return cachedSubjects(h!).length === 2;
+    });
   });
 
   it('turning it off stops a running download; downloaded mail stays', async () => {
@@ -404,7 +425,7 @@ describe('prefetch: pauses', () => {
     expect(cachedSubjects(h)).toEqual([]);
     // Still inside the 10 minutes: a new tick does nothing.
     clock += 5 * 60_000;
-    await h.engine.applySettings();
+    h.engine.sessions.prefetchNow();
     await settle(500);
     expect(cachedSubjects(h)).toEqual([]);
     clock += 6 * 60_000;

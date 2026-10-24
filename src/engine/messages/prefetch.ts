@@ -74,6 +74,8 @@ export class Prefetcher {
   private errorsInRow = 0;
   private progress: PrefetchProgress | null = null;
   private lastEmit = 0;
+  /** The `prefetchDays` value the loop last saw (settings writes of other keys change nothing). */
+  private lastDays: number | null = null;
 
   constructor(
     private readonly ctx: EngineContext,
@@ -88,6 +90,7 @@ export class Prefetcher {
   /** The session finished its first sync (same point as the snippet backfill). */
   start(): void {
     this.stopped = false;
+    this.lastDays ??= this.days();
     if (this.started) {
       this.kick();
       return;
@@ -112,6 +115,7 @@ export class Prefetcher {
     if (this.resumeTimer) clearTimeout(this.resumeTimer);
     this.startTimer = null;
     this.resumeTimer = null;
+    this.lastDays = null;
     this.cancelSleep();
   }
 
@@ -125,11 +129,20 @@ export class Prefetcher {
   /** The setting changed. A bigger window starts at once (no 20 s delay). */
   onSettingsChanged(): void {
     if (this.stopped || !this.started) return;
+    const d = this.days();
+    if (d === this.lastDays) return; // another setting changed
+    this.lastDays = d;
+    this.queue = []; // the window is different now
+    this.startNow();
+  }
+
+  /** Skip the start delay and run the loop (a bigger window; also used by tests). */
+  startNow(): void {
+    if (this.stopped || !this.started) return;
     if (this.startTimer) {
       clearTimeout(this.startTimer);
       this.startTimer = null;
     }
-    this.queue = []; // the window may be different now
     this.kick();
   }
 

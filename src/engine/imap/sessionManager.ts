@@ -131,6 +131,11 @@ export class SessionManager {
     for (const s of this.sessions.values()) s.prefetchSettingsChanged();
   }
 
+  /** Test hook: start every account's background download without the start delay. */
+  prefetchNow(): void {
+    for (const s of this.sessions.values()) s.prefetchNow();
+  }
+
   async syncAll(): Promise<void> {
     await Promise.all([...this.sessions.values()].map((s) => s.syncAll().catch(() => undefined)));
   }

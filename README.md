@@ -9,10 +9,10 @@ Made by voyd.
 ## Features
 
 - Unlimited email accounts (IMAP/SMTP), all in one place
-- One inbox for all accounts, conversations, search across accounts
-- Send later, rules that sort mail for you, and offline reading
+- One inbox for all accounts, conversations with replied and forwarded marks, search across accounts
+- Send later, rules that sort mail for you, and offline reading. New mail downloads in the background
 - Snooze, one-click unsubscribe, quick replies and a command box
-- Notification buttons: Mark as read, Archive and Delete
+- Notification buttons (Mark as read, Archive, Delete) and an unread number on the taskbar
 - Open and save `.eml` files (Letterdock appears in Windows Default apps for `.eml`; it never makes itself the default)
 - Keyboard shortcuts in Gmail and Outlook styles
 - Dark mode for emails and blocked pictures until you allow them

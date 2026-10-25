@@ -110,7 +110,7 @@
     </div>
     <p class="small">Free and open source (MIT) · Windows 10 and 11, 64-bit · about 100 MB</p>
     <p class="small">Not sure it is safe? <a href="#install">See how to install</a>. If the download does not start, <a href="https://github.com/voydapps/letterdock/releases/latest">open the download page</a>.</p>
-    <p class="whatsnew"><span class="chip">New in 0.6.4</span> Open .eml files, a Delete button on notifications, snooze and one-click unsubscribe. <a href="changelog.html">See what changed</a></p>
+    <p class="whatsnew"><!-- whatsnew:start --><span class="chip">New in 0.6.20</span> New mail downloads in the background, so it opens at once.<!-- whatsnew:end --> <a href="changelog.html">See what changed</a></p>
     <div class="hero-shot">
       <a class="zoom" href="screenshots/full/hero-light.png" aria-label="Enlarge screenshot: Unified inbox"><picture>
         <source data-t="dark" data-m="(max-width: 600px)" media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="screenshots/hero-mobile-dark.webp" type="image/webp">
@@ -159,7 +159,7 @@
           <span class="plus" aria-hidden="true"></span>
         </summary>
         <div class="more">
-          <p>See mail from all your accounts in one list. Small colored badges show which account each message is from.</p>
+          <p>See mail from all your accounts in one list. Small colored badges show which account each message is from. You can mute one account in All inboxes: its mail stays in its own folders and sends no notifications.</p>
           <a class="zoom" href="screenshots/full/unified-inbox.png" aria-label="Enlarge screenshot: One inbox for everything"><picture><source srcset="screenshots/unified-inbox.webp" type="image/webp"><img class="shot" src="screenshots/unified-inbox.png" width="1000" height="700" loading="lazy" decoding="async" alt="Message list mixing mail from a personal and a work account, each with a colored badge."></picture></a>
         </div>
       </details>
@@ -170,7 +170,7 @@
           <span class="plus" aria-hidden="true"></span>
         </summary>
         <div class="more">
-          <p>Replies are grouped into one thread, even when they are in different folders.</p>
+          <p>Replies are grouped into one thread, even when they are in different folders. A small arrow next to the date shows mail you replied to or forwarded, also from other apps.</p>
           <a class="zoom" href="screenshots/full/conversations.png" aria-label="Enlarge screenshot: Conversations"><picture><source srcset="screenshots/conversations.webp" type="image/webp"><img class="shot" src="screenshots/conversations.png" width="1000" height="700" loading="lazy" decoding="async" alt="A thread of four replies grouped into one conversation."></picture></a>
         </div>
       </details>
@@ -243,11 +243,11 @@
       <details class="tile" name="feat">
         <summary>
           <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.5 1A3.5 3.5 0 0 1 17 18zM4 4l16 16"/></svg></span>
-          <span class="t"><strong>Works offline</strong><span>Read and search saved mail with no internet.</span></span>
+          <span class="t"><strong>Works offline</strong><span>Read and search saved mail. New mail downloads in the background.</span></span>
           <span class="plus" aria-hidden="true"></span>
         </summary>
         <div class="more">
-          <p>Replies you write wait in the outbox and go out when you are back online.</p>
+          <p>New mail is downloaded in the background, so it opens at once. Choose how far back in Settings, Mail. Replies you write wait in the outbox and go out when you are back online.</p>
           <a class="zoom" href="screenshots/full/offline.png" aria-label="Enlarge screenshot: Works offline"><picture><source srcset="screenshots/offline.webp" type="image/webp"><img class="shot" src="screenshots/offline.png" width="1000" height="700" loading="lazy" decoding="async" alt="Letterdock working without internet: mail is still readable and one message waits in the outbox."></picture></a>
         </div>
       </details>
@@ -276,11 +276,11 @@
       <details class="tile" name="feat">
         <summary>
           <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg></span>
-          <span class="t"><strong>Notifications and tray</strong><span>Windows notifications with Mark as read, Archive and Delete buttons.</span></span>
+          <span class="t"><strong>Notifications and tray</strong><span>Buttons on notifications, and an unread number on the taskbar.</span></span>
           <span class="plus" aria-hidden="true"></span>
         </summary>
         <div class="more">
-          <p>Get a Windows notification for new mail. Mark it as read, archive it or delete it right from the notification. Delete moves the message to Trash. It is hidden when you turn off &ldquo;Show the sender and subject&rdquo;. Close the window and Letterdock keeps checking from the tray.</p>
+          <p>Get a Windows notification for new mail. Mark it as read, archive it or delete it right from the notification. The buttons have small icons, and Settings has a Show a test notification button to see how they look. Delete moves the message to Trash. It is hidden when you turn off &ldquo;Show the sender and subject&rdquo;. The Letterdock button on the taskbar shows a red number with your unread mail, and the tray icon gets a red dot. You can turn each off. Close the window and Letterdock keeps checking from the tray.</p>
           <a class="zoom" href="screenshots/full/notifications.png" aria-label="Enlarge screenshot: Notifications and tray"><picture><source srcset="screenshots/notifications.webp" type="image/webp"><img class="shot" src="screenshots/notifications.png" width="1000" height="700" loading="lazy" decoding="async" alt="Settings for new mail notifications, and the option to keep running in the background when the window is closed."></picture></a>
         </div>
       </details>
@@ -438,6 +438,7 @@
       <details><summary>Can I use more than one email account?</summary><div class="ans"><p>Yes. There is no limit. All accounts can share one inbox.</p></div></details>
       <details><summary>Is it safe? Why does Windows warn me?</summary><div class="ans"><p>The installer is not signed with a paid certificate yet, so Windows is careful. The code is public and anyone can check it. See <a href="#install">How to install</a>.</p></div></details>
       <details><summary>Where is my mail stored?</summary><div class="ans"><p>On your PC only. Your mail also stays on your provider&rsquo;s server, as always. Removing an account in Letterdock does not delete mail on the server.</p></div></details>
+      <details><summary>Does Letterdock work without internet?</summary><div class="ans"><p>Yes, for mail you already have. New mail downloads in the background, so your mail opens at once. You can read, search and write replies with no internet. Replies wait in the outbox and go out when you are back online. Send later needs the app to be running.</p></div></details>
       <details><summary>Can Letterdock open .eml files? And .msg?</summary><div class="ans"><p>Yes for .eml. Double-click a saved message, use Open with, drag it onto Letterdock, or press Ctrl+O. Letterdock shows up in Windows Default apps for .eml, but it never makes itself the default. .msg files (from Outlook) are not supported.</p></div></details>
       <details><summary>Does Letterdock block email trackers?</summary><div class="ans"><p>Pictures are blocked until you allow them. When you allow them, Letterdock still keeps known tracking pictures blocked and tells you when a message had some. It cannot find every tracker, so keep pictures off for senders you do not know.</p></div></details>
       <details><summary>Why does Gmail need an app password?</summary><div class="ans"><p>Google does not allow normal passwords in desktop apps. An app password is a separate 16-letter code just for Letterdock. You can delete it any time in your Google account.</p></div></details>

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.6.20 - 2026-10-24
+<!-- hero: New mail downloads in the background, so it opens at once. -->
 ### New
 - New mail is downloaded in the background, so it opens at once. Choose how far back in Settings, Mail. Pictures from the internet still load only when you allow them.
 ### Fixed

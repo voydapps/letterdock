@@ -1,9 +1,11 @@
-// Builds site/changelog.html from CHANGELOG.md (the single source). It also keeps two other site files current:
+// Builds site/changelog.html from CHANGELOG.md (the single source). It also keeps other site parts current:
+//   - the "New in X.Y.Z" chip on the home page (between the whatsnew markers in site/index.html): the newest entry with
+//     "### New"; the text comes from its New bullets, or from an optional <!-- hero: ... --> line under the version heading
 //   - "softwareVersion" in the JSON-LD of site/index.html = the version in package.json
 //   - <lastmod> in site/sitemap.xml (both URLs) = the date of the newest CHANGELOG.md entry (never "today")
 //
 //   node scripts/make-changelog-page.mjs           write site/changelog.html, site/sitemap.xml and the version in site/index.html
-//   node scripts/make-changelog-page.mjs --check   exit 1 when any of the three is out of date (used by CI)
+//   node scripts/make-changelog-page.mjs --check   exit 1 when any of them is out of date (used by CI)
 //   (npm run site:changelog is the same as the first line)
 //
 // CHANGELOG.md format:  "## <label> - <YYYY-MM-DD>", then "### New | Faster | Changed | Fixed" groups
@@ -11,6 +13,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyChip, heroChip, parse } from './lib/changelog.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcFile = join(root, 'CHANGELOG.md');
@@ -19,7 +22,6 @@ const indexFile = join(root, 'site', 'index.html');
 const sitemapFile = join(root, 'site', 'sitemap.xml');
 const pkgFile = join(root, 'package.json');
 const SITE = 'https://voydapps.github.io/letterdock/';
-const GROUPS = ['New', 'Faster', 'Changed', 'Fixed'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -29,35 +31,6 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g
 function longDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]} ${y}`;
-}
-
-function parse(md) {
-  const entries = [];
-  let entry = null;
-  let group = null;
-  md.replace(/\r\n/g, '\n').split('\n').forEach((line, i) => {
-    const fail = (msg) => {
-      throw new Error(`CHANGELOG.md line ${i + 1}: ${msg}`);
-    };
-    if (!line.trim() || line.startsWith('# ')) return;
-    let m;
-    if ((m = /^## (.+) - (\d{4}-\d{2}-\d{2})$/.exec(line))) {
-      entry = { label: m[1], date: m[2], groups: [] };
-      group = null;
-      entries.push(entry);
-    } else if ((m = /^### (.+)$/.exec(line))) {
-      if (!entry) fail('a group needs a version heading before it');
-      if (!GROUPS.includes(m[1])) fail(`unknown group "${m[1]}" (use ${GROUPS.join(', ')})`);
-      if (entry.groups.length && GROUPS.indexOf(entry.groups.at(-1).name) >= GROUPS.indexOf(m[1])) fail('groups must be in the order New, Faster, Changed, Fixed');
-      group = { name: m[1], items: [] };
-      entry.groups.push(group);
-    } else if ((m = /^- (.+)$/.exec(line))) {
-      if (!group) fail('a bullet needs a group before it');
-      group.items.push(m[1]);
-    } else fail(`cannot read "${line}"`);
-  });
-  if (!entries.length) throw new Error('CHANGELOG.md has no versions');
-  return entries;
 }
 
 const GH =
@@ -216,7 +189,11 @@ const read = (f) => {
 const indexRaw = read(indexFile);
 if (!VERSION_RE.test(indexRaw)) throw new Error('site/index.html has no "softwareVersion" in its JSON-LD');
 // Keep the file's own line endings (the working copy may be CRLF on Windows), so only the version changes.
-const indexNew = indexRaw.replace(VERSION_RE, `$1${version}$2`);
+const chip = heroChip(entries);
+chip.warnings.forEach((w) => console.warn(`warning: ${w}`));
+const withVersion = indexRaw.replace(VERSION_RE, `$1${version}$2`);
+const applied = applyChip(withVersion, chip.html);
+const indexNew = applied.html;
 
 if (process.argv.includes('--check')) {
   let bad = 0;
@@ -225,10 +202,14 @@ if (process.argv.includes('--check')) {
     bad++;
   };
   if (lf(read(outFile)) !== html) stale('site/changelog.html');
-  if (lf(indexRaw) !== lf(indexNew)) stale(`"softwareVersion" in site/index.html (should be ${version})`);
+  if (applied.stale) {
+    console.error('hero chip is stale: run npm run site:changelog');
+    bad++;
+  }
+  if (lf(withVersion) !== lf(indexRaw)) stale(`"softwareVersion" in site/index.html (should be ${version})`);
   if (lf(read(sitemapFile)) !== sitemap) stale(`site/sitemap.xml (lastmod should be ${newest})`);
   if (bad) process.exit(1);
-  console.log(`site/changelog.html, site/sitemap.xml and the version in site/index.html (${version}) are up to date.`);
+  console.log(`site/changelog.html, site/sitemap.xml, and the version and "New in" chip in site/index.html (${version}) are up to date.`);
 } else {
   writeFileSync(outFile, html);
   writeFileSync(sitemapFile, sitemap);
